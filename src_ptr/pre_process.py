@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from itertools import islice
 from typing import Dict, NamedTuple, List, Union, Optional, TypeVar, Iterator
 
-import config
+from config import config
 import random
 import json
 import numpy as np

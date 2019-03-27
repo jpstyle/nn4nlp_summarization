@@ -1,6 +1,6 @@
 from __future__ import unicode_literals, print_function, division
 
-import config
+from config import config
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,7 +40,7 @@ def init_wt_normal(wt):
 def init_wt_unif(wt):
     wt.data.uniform_(-config.rand_unif_init_mag, config.rand_unif_init_mag)
 
-def add_epsilon(self, dist, epsilon=sys.float_info.epsilon):
+def add_epsilon(self, dist, epsilon=1e-12):
     epsilon_dist = torch.ones_like(dist) * epsilon
     return dist+epsilon_dist
 

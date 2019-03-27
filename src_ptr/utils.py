@@ -7,7 +7,7 @@ import codecs
 from torch.autograd import Variable
 import numpy as np
 import torch
-import config
+from config import config
 
 def get_input_from_batch(batch, use_cuda):
     # batch_size = len(batch.enc_lens)

@@ -9,11 +9,13 @@ import time
 import argparse
 
 import torch
+from torch import nn
 from model import Model
 from torch.nn.utils import clip_grad_norm_
 from torch.optim import Adagrad
 from pre_process import DataLoader, batchify, Vocab
-import config
+from config import config
+
 from utils import get_input_from_batch, get_output_from_batch
 
 use_cuda = config.use_gpu and torch.cuda.is_available()
@@ -143,6 +145,8 @@ class Train(object):
 
 
 if __name__ == '__main__':
+    if config.gpus:
+        torch.cuda.set_device(config.gpus[0])
     parser = argparse.ArgumentParser(description="Train script")
     parser.add_argument("-m",
                         dest="model_file_path", 
