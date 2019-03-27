@@ -4,6 +4,7 @@ import config
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import sys
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from numpy import random
 
@@ -38,6 +39,10 @@ def init_wt_normal(wt):
 
 def init_wt_unif(wt):
     wt.data.uniform_(-config.rand_unif_init_mag, config.rand_unif_init_mag)
+
+def add_epsilon(self, dist, epsilon=sys.float_info.epsilon):
+    epsilon_dist = torch.ones_like(dist) * epsilon
+    return dist+epsilon_dist
 
 class Encoder(nn.Module):
     def __init__(self):
@@ -239,6 +244,8 @@ class Decoder(nn.Module):
             final_dist = vocab_dist_.scatter_add(1, enc_batch_extend_vocab, attn_dist_)
         else:
             final_dist = vocab_dist
+
+        # final_dist = add_epsilon(final_dist)
 
         return final_dist, s_t, c_t, attn_dist, p_gen, coverage
 

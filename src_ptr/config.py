@@ -1,4 +1,4 @@
-# train_file_path = "data/try_out/pubmed/train.txt"
+# train_file_path = "data/try_out/pubmed/train.orig.txt"
 # val_file_path = "data/try_out/pubmed/val.txt"
 # test_file_path = "data/try_out/pubmed/test.txt"
 # vocab_file_path = "data/pubmed/vocab"
@@ -19,7 +19,7 @@ min_dec_steps=35
 vocab_size=50006
 
 log_interval=20
-save_interval=3000
+save_interval=100
 
 max_section_len=500
 max_num_sections=4

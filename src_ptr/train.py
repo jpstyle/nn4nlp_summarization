@@ -132,7 +132,7 @@ class Train(object):
 
                 if batch_num % config.log_interval == 0:
                     unique_tok = len(set(pred))
-                    print(f'Ep {ep:<2}-iter {batch_num:<5}:loss {loss:.5f}; unique {unique_tok}; {(time.time() - start)/(config.log_interval*config.batch_size):.2f}s/sample')
+                    print(f'Ep {ep:<2}-iter {batch_num:<5}:loss {loss:.5f}; unique {unique_tok}; {(time.time() - start)/(config.log_interval):.2f} s/batch')
                     start = time.time()
                     print("output: "+" ".join([self.vocab.get(x, batch.articles[0].oovv.get(x, " ")) for x in pred]))
                     print(f"target: {' '.join(batch.abstracts[0].words)}")

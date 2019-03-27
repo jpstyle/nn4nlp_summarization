@@ -200,8 +200,13 @@ class Article(NamedTuple):
         """
         padding_word = vocab.PAD
         padding_id = vocab[padding_word]
-        secs = [sec.padded(word_length, padding_word=padding_word, padding_id=padding_id) for sec in self.secs]
-        needed_section_padding = sec_length - len(self)
+        secs = []
+        for sec in self.secs:
+            if len(sec) == 0:
+                continue
+            secs.append(sec.padded(word_length, padding_word=padding_word, padding_id=padding_id))
+        # secs = [sec.padded(word_length, padding_word=padding_word, padding_id=padding_id) for sec in self.secs]
+        needed_section_padding = sec_length - len(secs)
         sec_mask = [1] * (sec_length-needed_section_padding) + [0] * needed_section_padding
         assert needed_section_padding >= 0, 'Padding length must be equal to or greater than the number of sections.'
         for _ in range(needed_section_padding):
