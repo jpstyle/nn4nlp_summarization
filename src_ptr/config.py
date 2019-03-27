@@ -1,23 +1,28 @@
-train_file_path = "../nn4nlp-summarization/data/try_out/pubmed/train.txt"
-val_file_path = "../nn4nlp-summarization/data/try_out/pubmed/val.txt"
-test_file_path = "../nn4nlp-summarization/data/try_out/pubmed/test.txt"
-vocab_file_path = "../nn4nlp-summarization/data/pubmed/vocab"
+train_file_path = "data/try_out/pubmed/train.txt"
+val_file_path = "data/try_out/pubmed/val.txt"
+test_file_path = "data/try_out/pubmed/test.txt"
+vocab_file_path = "data/pubmed/vocab"
 log_root = "logs"
 
 # Hyperparameters
 hidden_dim= 256
 emb_dim= 128
-batch_size= 10
+batch_size= 8
 max_enc_steps=2000
 max_dec_steps=210
 beam_size=4
 min_dec_steps=35
 vocab_size=50006
 
+log_interval=50
+save_interval=3000
+
 max_section_len=500
 max_num_sections=4
 batch_shuffle_window=1
 seed=11
+
+ep=10
 
 lr=0.15
 adagrad_init_acc=0.1

@@ -36,8 +36,9 @@ class Train(object):
     def get_val_batches(self):
         return batchify(self.data.get_val_examples(), config.batch_size, self.vocab)
 
-    def save_model(self, running_avg_loss, iter):
+    def save_model(self, running_avg_loss, epoch, iter):
         state = {
+            'epoch': epoch,
             'iter': iter,
             'encoder_state_dict': self.model.encoder.state_dict(),
             'decoder_state_dict': self.model.decoder.state_dict(),
@@ -119,25 +120,27 @@ class Train(object):
 
         return loss.item(), preds
 
-    def trainIters(self, n_iters, model_file_path=None):
-        iter, running_avg_loss = self.setup_train(model_file_path)
+    def trainEpochs(self, epochs, model_file_path=None):
+        batch_num, running_avg_loss = self.setup_train(model_file_path)
         start = time.time()
-        while iter < n_iters:
-            # batch = self.batcher.next_batch()
+        batch_num = 0
+        for ep in range(epochs):
             batches = self.get_train_batches()
             for batch in batches:
                 loss, pred = self.train_one_batch(batch)
-                iter += 1
+                batch_num += 1
 
-                print_interval = 50
-                if iter % print_interval == 0:
-                    print('steps %d, %d batch: %.2fs , loss: %f' % (iter, print_interval,
-                                                                            time.time() - start, loss))
+                if batch_num % config.log_interval == 0:
+                    unique_tok = len(set(pred))
+                    print(f'Ep {ep:<2}-iter {batch_num:<5}:loss {loss:.5f}; unique tok {unique_tok}; {(time.time() - start)/config.log_interval:.2f}s/batch')
                     start = time.time()
                     print("output: "+" ".join([self.vocab.get(x) for x in pred]))
                     print(f"target: {' '.join(batch.abstracts[0].words)}")
-                if iter % 10000 == 0:
-                    self.save_model(running_avg_loss, iter)
+
+                if batch_num % config.save_interval == 0:
+                    self.save_model(running_avg_loss, ep, batch_num)
+            self.save_model(running_avg_loss, ep, batch_num)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train script")
@@ -149,4 +152,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     train_processor = Train()
-    train_processor.trainIters(config.max_iterations, args.model_file_path)
+    train_processor.trainEpochs(config.ep, args.model_file_path)
