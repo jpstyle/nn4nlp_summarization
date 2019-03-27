@@ -15,6 +15,7 @@ def get_input_from_batch(batch, use_cuda):
 
     inputs = []
     inputs_oov = []
+    sec_padding_mask = []
     for article in batch.articles:
         inp = []
         inp_oov = []
@@ -25,12 +26,15 @@ def get_input_from_batch(batch, use_cuda):
             inp_oov.extend(sec.word_ids_oov)
         inputs.append(inp)
         inputs_oov.append(inp_oov)
+        sec_padding_mask.append(article.sec_mask)
 
     enc_batch = torch.LongTensor(inputs)
     # enc_batch = torch.Tensor(torch.from_numpy(batch.enc_batch).long(), requires_grad=True)
     # enc_padding_mask = torch.Tensor(torch.from_numpy(batch.enc_padding_mask), requires_grad=True).float()
     enc_padding_mask = enc_batch.ne(0).float().requires_grad_()
     # torch.Tensor(torch.from_numpy(batch.enc_padding_mask)).float()
+
+    sec_padding_mask = torch.LongTensor(sec_padding_mask).float().requires_grad_()
 
     enc_lens = batch.enc_lens
     extra_zeros = None
@@ -54,6 +58,7 @@ def get_input_from_batch(batch, use_cuda):
         enc_batch = enc_batch.cuda()
         enc_padding_mask = enc_padding_mask.cuda()
         c_t_1 = c_t_1.cuda()
+        sec_padding_mask = sec_padding_mask.cuda()
 
         if enc_batch_extend_vocab is not None:
             enc_batch_extend_vocab = enc_batch_extend_vocab.cuda()
@@ -62,7 +67,7 @@ def get_input_from_batch(batch, use_cuda):
         if coverage is not None:
             coverage = coverage.cuda()
 
-    return enc_batch, enc_padding_mask, enc_lens, enc_batch_extend_vocab, extra_zeros, c_t_1, coverage
+    return enc_batch, enc_padding_mask, sec_padding_mask, enc_lens, enc_batch_extend_vocab, extra_zeros, c_t_1, coverage
 
 def get_output_from_batch(batch, use_cuda):
     targets = []

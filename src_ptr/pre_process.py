@@ -145,6 +145,7 @@ class Section(NamedTuple):
 
 class Article(NamedTuple):
     secs: List[Section]
+    sec_mask: List[int]
     oovv: Labeler
 
     def __len__(self):
@@ -177,7 +178,7 @@ class Article(NamedTuple):
                 sec_word_ids_oovs.extend(words_ids_oov)
             secs.append(Section(name=name, words=sec_words, word_ids=sec_word_ids, word_ids_oov=sec_word_ids_oovs))
             num_sec += 1
-        return Article(secs=secs, oovv=oovv)
+        return Article(secs=secs, oovv=oovv, sec_mask=[])
 
     @property
     def longest_word_len(self) -> int:
@@ -201,12 +202,13 @@ class Article(NamedTuple):
         padding_id = vocab[padding_word]
         secs = [sec.padded(word_length, padding_word=padding_word, padding_id=padding_id) for sec in self.secs]
         needed_section_padding = sec_length - len(self)
+        sec_mask = [1] * (sec_length-needed_section_padding) + [0] * needed_section_padding
         assert needed_section_padding >= 0, 'Padding length must be equal to or greater than the number of sections.'
-        for i in range(needed_section_padding):
+        for _ in range(needed_section_padding):
             name = 'PAD_SEC'
             sec = Section(name=name, words=[], word_ids=[], word_ids_oov=[])
             secs.append(sec.padded(word_length, padding_word=padding_word, padding_id=padding_id))
-        return Article(secs=secs, oovv=self.oovv)
+        return Article(secs=secs, oovv=self.oovv, sec_mask=sec_mask)
 
 
 class Abstract(NamedTuple):

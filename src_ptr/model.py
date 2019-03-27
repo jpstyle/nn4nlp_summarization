@@ -83,6 +83,34 @@ class ReduceState(nn.Module):
 
         return (hidden_reduced_h.unsqueeze(0), hidden_reduced_c.unsqueeze(0)) # h, c dim = 1 x b x hidden_dim
 
+class SectionAttention(nn.Module):
+    def __init__(self):
+        super(SectionAttention, self).__init__()
+        # section-level attention
+        self.w_h = nn.Linear(config.hidden_dim * 2, config.hidden_dim * 2, bias=False)
+        self.w_d = nn.Linear(config.hidden_dim * 2, config.hidden_dim * 2)
+        self.v = nn.Linear(config.hidden_dim * 2, 1, bias=False)
+
+    def forward(self, s_t_hat, encoder_section_outputs, sec_padding_mask):
+        b, secL, n = encoder_section_outputs.shape
+
+        encoder_section_feature = encoder_section_outputs.view(-1, 2*config.hidden_dim)  # B * t_k x 2*hidden_dim
+        encoder_section_feature = self.w_h(encoder_section_feature)
+
+        dec_fea = self.w_d(s_t_hat) # B x 2*hidden_dim
+        dec_fea_expanded = dec_fea.unsqueeze(1).expand(b, secL, n).contiguous() # B x secL x 2*hidden_dim
+        dec_fea_expanded = dec_fea_expanded.view(-1, n)  # B * secL x 2*hidden_dim
+
+        att_features = encoder_section_feature + dec_fea_expanded # B * secL x 2*hidden_dim
+        e = torch.tanh(att_features) # B * secL x 2*hidden_dim
+        scores = self.v(e)  # B * secL x 1
+        scores = scores.view(-1, secL)  # B x secL
+
+        attn_dist_ = F.softmax(scores, dim=1)*sec_padding_mask # B x secL
+        normalization_factor = attn_dist_.sum(1, keepdim=True)
+        attn_dist = attn_dist_ / normalization_factor # B x secL
+        return attn_dist
+
 class Attention(nn.Module):
     def __init__(self):
         super(Attention, self).__init__()
@@ -92,7 +120,7 @@ class Attention(nn.Module):
         self.decode_proj = nn.Linear(config.hidden_dim * 2, config.hidden_dim * 2)
         self.v = nn.Linear(config.hidden_dim * 2, 1, bias=False)
 
-    def forward(self, s_t_hat, encoder_outputs, encoder_feature, enc_padding_mask, coverage):
+    def forward(self, s_t_hat, encoder_outputs, encoder_feature, enc_padding_mask, sec_attn, coverage):
         b, t_k, n = list(encoder_outputs.size())
 
         dec_fea = self.decode_proj(s_t_hat) # B x 2*hidden_dim
@@ -109,7 +137,14 @@ class Attention(nn.Module):
         scores = self.v(e)  # B * t_k x 1
         scores = scores.view(-1, t_k)  # B x t_k
 
-        attn_dist_ = F.softmax(scores, dim=1)*enc_padding_mask # B x t_k
+        secL = sec_attn.size(1)
+        wordL = int(t_k/secL)
+        sec_attn = sec_attn.unsqueeze(2).repeat(1,1,wordL).view(b,-1) # B x t_k
+
+        attn_dist_ = torch.einsum("bl,bl->bl",sec_attn, scores)
+        attn_dist_ = F.softmax(attn_dist_, dim=1) * enc_padding_mask
+
+        # attn_dist_ = F.softmax(scores, dim=1)*enc_padding_mask # B x t_k
         normalization_factor = attn_dist_.sum(1, keepdim=True)
         attn_dist = attn_dist_ / normalization_factor
 
@@ -129,6 +164,7 @@ class Decoder(nn.Module):
     def __init__(self):
         super(Decoder, self).__init__()
         self.attention_network = Attention()
+        self.attention_section_network = SectionAttention()
         # decoder
         self.embedding = nn.Embedding(config.vocab_size, config.emb_dim)
         init_wt_normal(self.embedding.weight)
@@ -146,15 +182,20 @@ class Decoder(nn.Module):
         self.out2 = nn.Linear(config.hidden_dim, config.vocab_size)
         init_linear_wt(self.out2)
 
-    def forward(self, y_t_1, s_t_1, encoder_outputs, encoder_feature, enc_padding_mask,
+    def forward(self, secL, wordL, y_t_1, s_t_1, encoder_outputs, encoder_feature, enc_padding_mask, sec_padding_mask,
                 c_t_1, extra_zeros, enc_batch_extend_vocab, coverage, step):
 
         if not self.training and step == 0:
             h_decoder, c_decoder = s_t_1
             s_t_hat = torch.cat((h_decoder.view(-1, config.hidden_dim),
                                  c_decoder.view(-1, config.hidden_dim)), 1)  # B x 2*hidden_dim
+
+            encoder_section_outputs = encoder_outputs.view(encoder_outputs.size(0), secL, wordL, encoder_outputs.size(-1))[:,:,-1,:]
+            # encoder_section_outputs = torch.zeros(encoder_outputs.size(0), secL, encoder_outputs.size(2))
+            # encoder_section_outputs.index_copy_()
+            sec_attn_dist = self.attention_section_network(s_t_hat, encoder_section_outputs, sec_padding_mask)
             c_t, _, coverage_next = self.attention_network(s_t_hat, encoder_outputs, encoder_feature,
-                                                              enc_padding_mask, coverage)
+                                                              enc_padding_mask, sec_attn_dist, coverage)
             coverage = coverage_next
 
         y_t_1_embd = self.embedding(y_t_1)
@@ -164,8 +205,12 @@ class Decoder(nn.Module):
         h_decoder, c_decoder = s_t
         s_t_hat = torch.cat((h_decoder.view(-1, config.hidden_dim),
                              c_decoder.view(-1, config.hidden_dim)), 1)  # B x 2*hidden_dim
+
+        encoder_section_outputs = encoder_outputs.view(encoder_outputs.size(0), secL, wordL, encoder_outputs.size(-1))[:,:,-1,:]
+        sec_attn_dist = self.attention_section_network(s_t_hat, encoder_section_outputs, sec_padding_mask)
+
         c_t, attn_dist, coverage_next = self.attention_network(s_t_hat, encoder_outputs, encoder_feature,
-                                                          enc_padding_mask, coverage)
+                                                          enc_padding_mask, sec_attn_dist, coverage)
 
         if self.training or step > 0:
             coverage = coverage_next

@@ -75,7 +75,7 @@ class Train(object):
         return start_iter, start_loss
 
     def train_one_batch(self, batch):
-        enc_batch, enc_padding_mask, enc_lens, enc_batch_extend_vocab, extra_zeros, c_t_1, coverage = \
+        enc_batch, enc_padding_mask, sec_padding_mask, enc_lens, enc_batch_extend_vocab, extra_zeros, c_t_1, coverage = \
             get_input_from_batch(batch, use_cuda)
         dec_batch, dec_padding_mask, max_dec_len, dec_lens_var, target_batch = \
             get_output_from_batch(batch, use_cuda)
@@ -89,8 +89,8 @@ class Train(object):
         preds = []
         for di in range(min(max_dec_len, config.max_dec_steps)):
             y_t_1 = dec_batch[:, di]  # Teacher forcing
-            final_dist, s_t_1,  c_t_1, attn_dist, p_gen, next_coverage = self.model.decoder(y_t_1, s_t_1,
-                                                        encoder_outputs, encoder_feature, enc_padding_mask, c_t_1,
+            final_dist, s_t_1,  c_t_1, attn_dist, p_gen, next_coverage = self.model.decoder(batch.sec_len,batch.enc_len,y_t_1, s_t_1,
+                                                        encoder_outputs, encoder_feature, enc_padding_mask, sec_padding_mask, c_t_1,
                                                         extra_zeros, enc_batch_extend_vocab,
                                                                            coverage, di)
             target = target_batch[:, di]
@@ -132,14 +132,14 @@ class Train(object):
 
                 if batch_num % config.log_interval == 0:
                     unique_tok = len(set(pred))
-                    print(f'Ep {ep:<2}-iter {batch_num:<5}:loss {loss:.5f}; unique tok {unique_tok}; {(time.time() - start)/config.log_interval:.2f}s/batch')
+                    print(f'Ep {ep:<2}-iter {batch_num:<5}:loss {loss:.5f}; unique {unique_tok}; {(time.time() - start)/(config.log_interval*config.batch_size):.2f}s/sample')
                     start = time.time()
-                    print("output: "+" ".join([self.vocab.get(x) for x in pred]))
+                    print("output: "+" ".join([self.vocab.get(x, batch.articles[0].oovv.get(x, " ")) for x in pred]))
                     print(f"target: {' '.join(batch.abstracts[0].words)}")
 
                 if batch_num % config.save_interval == 0:
                     self.save_model(running_avg_loss, ep, batch_num)
-            self.save_model(running_avg_loss, ep, batch_num)
+            # self.save_model(running_avg_loss, ep, batch_num)
 
 
 if __name__ == '__main__':
