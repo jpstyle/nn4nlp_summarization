@@ -1,0 +1,10 @@
+data/arxiv-release
+data/pubmed-release
+data/arxiv
+data/pubmed
+data/try_out
+logs/
+models/
+__pycache__/
+.idea/
+.vscode
