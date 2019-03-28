@@ -287,7 +287,8 @@ class Batcher(object):
       article_sections = [sec.strip().decode('utf-8') for sec in data.article2secs(article)]
       abstract_sentences = [sent.strip().decode('utf-8') for sent in data.abstract2sents(abstract)] # Use the <s> and </s> tags in abstract to get a list of sentences.
       example = Example(article, abstract_sentences, article_sections, self._vocab) # Process into an Example.
-      self._example_queue.put(example) # place the Example in the example queue.
+      if sum([sum(x) for x in example.enc_mask]) > 0 and example.enc_sec_num > 0:
+        self._example_queue.put(example) # place the Example in the example queue.
 
   def fill_batch_queue(self):
     while True:
@@ -300,8 +301,10 @@ class Batcher(object):
         # Get bucketing_cache_size-many batches of Examples into a list, then sort
         inputs = []
         for _ in range(self.batch_size * self._bucketing_cache_size):
-          inputs.append(self._example_queue.get())
-        inputs = sorted(inputs, key=lambda inp: (inp.enc_len, inp.enc_sec_num), reverse=True) # sort by length of encoder sequence
+          ex = self._example_queue.get()
+          if sum([sum(x) for x in ex.enc_mask]) > 0 and ex.enc_sec_num > 0:
+            inputs.append(ex)
+        inputs = sorted(inputs, key=lambda inp: inp.enc_sec_num, reverse=True) # sort by length of encoder sequence
 
         # Group the sorted Examples into batches, optionally shuffle the batches, and place in the batch queue.
         batches = []
