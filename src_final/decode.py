@@ -4,8 +4,8 @@ from __future__ import unicode_literals, print_function, division
 
 import sys
 
-reload(sys)
-sys.setdefaultencoding('utf8')
+# reload(sys)
+# sys.setdefaultencoding('utf8')
 
 import os
 import time
@@ -52,7 +52,7 @@ class BeamSearch(object):
         model_name = os.path.basename(model_file_path)
         self._decode_dir = os.path.join(config.log_root, 'decode_%s' % (model_name))
         self._rouge_ref_dir = os.path.join(self._decode_dir, 'rouge_ref')
-        self._rouge_dec_dir = os.path.join(self._decode_dir, 'rouge_dec_dir')
+        self._rouge_dec_dir = os.path.join(self._decode_dir, 'rouge_dec')
         for p in [self._decode_dir, self._rouge_ref_dir, self._rouge_dec_dir]:
             if not os.path.exists(p):
                 os.mkdir(p)
@@ -107,13 +107,13 @@ class BeamSearch(object):
 
     def beam_search(self, batch):
         #batch should have only one example
-        enc_batch, enc_padding_mask, enc_lens, enc_batch_extend_vocab, extra_zeros, c_t_0, coverage_t_0 = \
+        enc_batch, enc_padding_mask, sec_padding_mask, enc_lens, enc_sec_lens, enc_batch_extend_vocab, extra_zeros, c_t_1, coverage = \
             get_input_from_batch(batch, use_cuda)
 
-        encoder_outputs, encoder_feature, encoder_hidden = self.model.encoder(enc_batch, enc_lens)
-        s_t_0 = self.model.reduce_state(encoder_hidden)
+        encoder_outputs, encoder_feature, encoder_sec_outputs, encoder_hidden = self.model.encoder(enc_batch, enc_lens, enc_sec_lens, batch.sec_num, batch.sec_len)
+        s_t_1 = self.model.reduce_state(encoder_hidden)
 
-        dec_h, dec_c = s_t_0 # 1 x 2*hidden_size
+        dec_h, dec_c = s_t_1 # 1 x 2*hidden_size
         dec_h = dec_h.squeeze()
         dec_c = dec_c.squeeze()
 
@@ -121,9 +121,9 @@ class BeamSearch(object):
         beams = [Beam(tokens=[self.vocab.word2id(data.START_DECODING)],
                       log_probs=[0.0],
                       state=(dec_h[0], dec_c[0]),
-                      context = c_t_0[0],
-                      coverage=(coverage_t_0[0] if config.is_coverage else None))
-                 for _ in xrange(config.beam_size)]
+                      context = c_t_1[0],
+                      coverage=(coverage[0] if config.is_coverage else None))
+                 for _ in range(config.beam_size)]
         results = []
         steps = 0
         while steps < config.max_dec_steps and len(results) < config.beam_size:
@@ -133,7 +133,7 @@ class BeamSearch(object):
             y_t_1 = Variable(torch.LongTensor(latest_tokens))
             if use_cuda:
                 y_t_1 = y_t_1.cuda()
-            all_state_h =[]
+            all_state_h = []
             all_state_c = []
 
             all_context = []
@@ -155,25 +155,26 @@ class BeamSearch(object):
                     all_coverage.append(h.coverage)
                 coverage_t_1 = torch.stack(all_coverage, 0)
 
-            final_dist, s_t, c_t, attn_dist, p_gen, coverage_t = self.model.decoder(y_t_1, s_t_1,
-                                                        encoder_outputs, encoder_feature, enc_padding_mask, c_t_1,
-                                                        extra_zeros, enc_batch_extend_vocab, coverage_t_1, steps)
+            final_dist, s_t_1,  c_t_1, attn_dist, p_gen, next_coverage = self.model.decoder(y_t_1, s_t_1,
+                                                        encoder_outputs, encoder_feature, encoder_sec_outputs, enc_padding_mask, sec_padding_mask, c_t_1,
+                                                        extra_zeros, enc_batch_extend_vocab,
+                                                                           coverage_t_1, steps)
             log_probs = torch.log(final_dist)
             topk_log_probs, topk_ids = torch.topk(log_probs, config.beam_size * 2)
 
-            dec_h, dec_c = s_t
+            dec_h, dec_c = s_t_1
             dec_h = dec_h.squeeze()
             dec_c = dec_c.squeeze()
 
             all_beams = []
             num_orig_beams = 1 if steps == 0 else len(beams)
-            for i in xrange(num_orig_beams):
+            for i in range(num_orig_beams):
                 h = beams[i]
                 state_i = (dec_h[i], dec_c[i])
-                context_i = c_t[i]
-                coverage_i = (coverage_t[i] if config.is_coverage else None)
+                context_i = c_t_1[i]
+                coverage_i = (next_coverage[i] if config.is_coverage else None)
 
-                for j in xrange(config.beam_size * 2):  # for each of the top 2*beam_size hyps:
+                for j in range(config.beam_size * 2):  # for each of the top 2*beam_size hyps:
                     new_beam = h.extend(token=topk_ids[i, j].item(),
                                    log_prob=topk_log_probs[i, j].item(),
                                    state=state_i,

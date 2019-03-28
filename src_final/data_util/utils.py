@@ -19,7 +19,7 @@ def make_html_safe(s):
 
 
 def rouge_eval(ref_dir, dec_dir):
-  r = pyrouge.Rouge155()
+  r = pyrouge.Rouge155('./ROUGE-1.5.5')
   r.model_filename_pattern = '#ID#_reference.txt'
   r.system_filename_pattern = '(\d+)_decoded.txt'
   r.model_dir = ref_dir

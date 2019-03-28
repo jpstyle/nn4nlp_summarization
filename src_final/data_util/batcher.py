@@ -150,7 +150,8 @@ class Batch(object):
 
     # Pad the encoder input sequences up to the length of the longest sequence
     for ex in example_list:
-      ex.flatten_pad_encoder_input(max_enc_sec_num, max_enc_sec_len, self.pad_id)
+      if type(ex.enc_input[0]).__name__ == 'list':
+        ex.flatten_pad_encoder_input(max_enc_sec_num, max_enc_sec_len, self.pad_id)
       # ex.pad_encoder_input(max_enc_seq_len, self.pad_id)
       # ex.pad_encoder_sec_len(max_enc_sec_len, self.pad_id)
       # ex.pad_encoder_sec(max_enc_sec_num, self.pad_id)
@@ -286,7 +287,8 @@ class Batcher(object):
 
       article_sections = [sec.strip().decode('utf-8') for sec in data.article2secs(article)]
       abstract_sentences = [sent.strip().decode('utf-8') for sent in data.abstract2sents(abstract)] # Use the <s> and </s> tags in abstract to get a list of sentences.
-      example = Example(article, abstract_sentences, article_sections, self._vocab) # Process into an Example.
+      if len(article_sections) > 0 and len(abstract_sentences) > 0: # Reject 'corrupted' examples; e.g. empty section list
+        example = Example(article, abstract_sentences, article_sections, self._vocab) # Process into an Example.
       if sum([sum(x) for x in example.enc_mask]) > 0 and example.enc_sec_num > 0:
         self._example_queue.put(example) # place the Example in the example queue.
 
