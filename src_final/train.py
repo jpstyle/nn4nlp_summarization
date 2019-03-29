@@ -10,17 +10,16 @@ import argparse
 
 import tensorflow as tf
 import torch
+from torch import nn
 from model import Model
 from torch.nn.utils import clip_grad_norm_
-
 from torch.optim import Adagrad
 
-# from data_util import config
 from config import config
 from data_util.batcher import Batcher
 from data_util.data import Vocab
 from data_util.utils import calc_running_avg_loss
-from train_util import get_input_from_batch, get_output_from_batch
+from utils import get_input_from_batch, get_output_from_batch
 
 use_cuda = config.use_gpu and torch.cuda.is_available()
 

@@ -19,7 +19,7 @@ from data_util import data
 from config import config
 from model import Model
 from data_util.utils import write_for_rouge, rouge_eval, rouge_log
-from train_util import get_input_from_batch
+from utils import get_input_from_batch
 
 
 use_cuda = config.use_gpu and torch.cuda.is_available()
