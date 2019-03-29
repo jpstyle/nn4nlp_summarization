@@ -105,3 +105,31 @@ def initialize_lstm(lstm):
     bias = getattr(lstm, b)
     bias.data.fill_(0.)
     bias.data[(bias.size(0) // 4):(bias.size(0) // 2)].fill_(1.)
+
+
+def get_model(model_file_path=None):
+    model = Model()
+    optimizer = Optimizer(config.optim, config.lr_coverage if config.is_coverage else config.lr, acc=config.adagrad_init_acc, max_grad_norm=config.max_grad_norm)
+    optimizer.set_parameters(model.parameters())
+
+    start_iter, start_loss = 0, 0
+    if model_file_path is not None:
+        checkpoint = torch.load(model_file_path)
+        start_iter = checkpoint['iter']
+        start_loss = checkpoint['current_loss']
+
+        model_state_dict = dict([(k, v)
+                              for k, v in checkpoint['model'].items()])
+        model.load_state_dict(model_state_dict, strict=False)
+
+        if not config.is_coverage:
+            optimizer.optim.load_state_dict(checkpoint['optimizer'])
+            if config.use_gpu:
+                for state in optimizer.optim.state.values():
+                    for k, v in checkpoint.items():
+                        if torch.is_tensor(v):
+                            state[k] = v.cuda()
+    if config.use_gpu:
+        model = model.cuda()
+        optimizer.set_parameters(model.parameters())
+    return model, optimizer, start_iter, start_loss

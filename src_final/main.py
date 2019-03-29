@@ -1,60 +1,16 @@
 from __future__ import unicode_literals, print_function, division
 
-# import ptvsd
-# ptvsd.enable_attach(address=('localhost', 99), redirect_output=True)
-# ptvsd.wait_for_attach()
-
 import os
 import time
-import argparse
-
-import tensorflow as tf
 import torch
+import tensorflow as tf
 from torch import nn
 from model import Model
 from optim import Optimizer
 from config import config
 from pre_process import DataLoader, batchify, Vocab
-from utils import calc_running_avg_loss
+from utils import get_model, calc_running_avg_loss
 
-
-def save(model, optimizer, model_save_dir, running_avg_loss, iter):
-    checkpoint = {
-        'model': model.module.state_dict() if len(config.gpus) > 1 else model.state_dict(),
-        'config': config,
-        'iter': iter,
-        'optimizer': optimizer.optim.state_dict(),
-        'current_loss': running_avg_loss
-    }
-    model_save_path = os.path.join(model_save_dir, 'model_%d_%d' % (iter, int(time.time())))
-    torch.save(checkpoint, model_save_path)
-
-def get_model(model_file_path=None):
-    model = Model()
-    optimizer = Optimizer(config.optim, config.lr_coverage if config.is_coverage else config.lr, acc=config.adagrad_init_acc, max_grad_norm=config.max_grad_norm)
-    optimizer.set_parameters(model.parameters())
-
-    start_iter, start_loss = 0, 0
-    if model_file_path is not None:
-        checkpoint = torch.load(model_file_path)
-        start_iter = checkpoint['iter']
-        start_loss = checkpoint['current_loss']
-
-        model_state_dict = dict([(k, v)
-                              for k, v in checkpoint['model'].items()])
-        model.load_state_dict(model_state_dict, strict=False)
-
-        if not config.is_coverage:
-            optimizer.optim.load_state_dict(checkpoint['optimizer'])
-            if config.use_gpu:
-                for state in optimizer.optim.state.values():
-                    for k, v in checkpoint.items():
-                        if torch.is_tensor(v):
-                            state[k] = v.cuda()
-    if config.use_gpu:
-        model = model.cuda()
-        optimizer.set_parameters(model.parameters())
-    return model, optimizer, start_iter, start_loss
 
 def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logger=None):
     def get_train_batches():
@@ -83,7 +39,15 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
 
                 start = time.time()
             if iter % config.save_interval == 0:
-                save(model, optim, model_save_dir, running_avg_loss, iter)
+                checkpoint = {
+                    'model': model.module.state_dict() if len(config.gpus) > 1 else model.state_dict(),
+                    'config': config,
+                    'iter': iter,
+                    'optimizer': optim.optim.state_dict(),
+                    'loss': running_avg_loss
+                }
+                model_save_path = os.path.join(model_save_dir, 'model_%d_%d' % (iter, int(time.time())))
+                torch.save(checkpoint, model_save_path)
 
 def main(model_path):
     data = DataLoader(config)
