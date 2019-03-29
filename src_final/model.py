@@ -53,6 +53,20 @@ class Encoder(nn.Module):
         self.W_sec = nn.Linear(config.hidden_dim*2, config.hidden_dim)
         self.W_h = nn.Linear(config.hidden_dim * 2, config.hidden_dim * 2, bias=False)
 
+        self.reduce_h = nn.Linear(config.hidden_dim * 2, config.hidden_dim)
+        init_linear_wt(self.reduce_h)
+        self.reduce_c = nn.Linear(config.hidden_dim * 2, config.hidden_dim)
+        init_linear_wt(self.reduce_c)
+
+    def reduce_state(self, hidden):
+        h, c = hidden # h, c dim = 2 x b x hidden_dim
+        h_in = h.transpose(0, 1).contiguous().view(-1, config.hidden_dim * 2)
+        hidden_reduced_h = F.relu(self.reduce_h(h_in))
+        c_in = c.transpose(0, 1).contiguous().view(-1, config.hidden_dim * 2)
+        hidden_reduced_c = F.relu(self.reduce_c(c_in))
+
+        return (hidden_reduced_h.unsqueeze(0), hidden_reduced_c.unsqueeze(0)) # h, c dim = 1 x b x hidden_dim
+
     #seq_lens should be in descending order
     def forward(self, input, seq_lens, sec_lens, secL, wordL):
         b, l = input.shape
@@ -74,25 +88,10 @@ class Encoder(nn.Module):
         encoder_feature = encoder_outputs.view(-1, 2*config.hidden_dim)  # B * t_k x 2*hidden_dim
         encoder_feature = self.W_h(encoder_feature)
 
+        hidden = self.reduce_state(hidden)
+
         return encoder_outputs, encoder_feature, encoder_sec_outputs, hidden
 
-class ReduceState(nn.Module):
-    def __init__(self):
-        super(ReduceState, self).__init__()
-
-        self.reduce_h = nn.Linear(config.hidden_dim * 2, config.hidden_dim)
-        init_linear_wt(self.reduce_h)
-        self.reduce_c = nn.Linear(config.hidden_dim * 2, config.hidden_dim)
-        init_linear_wt(self.reduce_c)
-
-    def forward(self, hidden):
-        h, c = hidden # h, c dim = 2 x b x hidden_dim
-        h_in = h.transpose(0, 1).contiguous().view(-1, config.hidden_dim * 2)
-        hidden_reduced_h = F.relu(self.reduce_h(h_in))
-        c_in = c.transpose(0, 1).contiguous().view(-1, config.hidden_dim * 2)
-        hidden_reduced_c = F.relu(self.reduce_c(c_in))
-
-        return (hidden_reduced_h.unsqueeze(0), hidden_reduced_c.unsqueeze(0)) # h, c dim = 1 x b x hidden_dim
 
 class SectionAttention(nn.Module):
     def __init__(self):
@@ -248,26 +247,20 @@ class Model(object):
     def __init__(self, model_file_path=None, is_eval=False):
         encoder = Encoder()
         decoder = Decoder()
-        reduce_state = ReduceState()
-
-        # shared the embedding between encoder and decoder
         decoder.embedding.weight = encoder.embedding.weight
+
         if is_eval:
             encoder = encoder.eval()
             decoder = decoder.eval()
-            reduce_state = reduce_state.eval()
 
         if use_cuda:
             encoder = encoder.cuda()
             decoder = decoder.cuda()
-            reduce_state = reduce_state.cuda()
 
         self.encoder = encoder
         self.decoder = decoder
-        self.reduce_state = reduce_state
 
         if model_file_path is not None:
             state = torch.load(model_file_path, map_location= lambda storage, location: storage)
             self.encoder.load_state_dict(state['encoder_state_dict'])
             self.decoder.load_state_dict(state['decoder_state_dict'], strict=False)
-            self.reduce_state.load_state_dict(state['reduce_state_dict'])

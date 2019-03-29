@@ -45,7 +45,6 @@ class Train(object):
             'iter': iter,
             'encoder_state_dict': self.model.encoder.state_dict(),
             'decoder_state_dict': self.model.decoder.state_dict(),
-            'reduce_state_dict': self.model.reduce_state.state_dict(),
             'optimizer': self.optimizer.state_dict(),
             'current_loss': running_avg_loss
         }
@@ -55,8 +54,7 @@ class Train(object):
     def setup_train(self, model_file_path=None):
         self.model = Model(model_file_path)
 
-        params = list(self.model.encoder.parameters()) + list(self.model.decoder.parameters()) + \
-                 list(self.model.reduce_state.parameters())
+        params = list(self.model.encoder.parameters()) + list(self.model.decoder.parameters())
         initial_lr = config.lr_coverage if config.is_coverage else config.lr
         self.optimizer = Adagrad(params, lr=initial_lr, initial_accumulator_value=config.adagrad_init_acc)
 
@@ -85,14 +83,13 @@ class Train(object):
 
         self.optimizer.zero_grad()
 
-        encoder_outputs, encoder_feature, encoder_sec_outputs, encoder_hidden = self.model.encoder(enc_batch, enc_lens, enc_sec_lens, batch.sec_num, batch.sec_len)
-        s_t_1 = self.model.reduce_state(encoder_hidden)
+        encoder_outputs, encoder_feature, encoder_sec_outputs, hidden = self.model.encoder(enc_batch, enc_lens, enc_sec_lens, batch.sec_num, batch.sec_len)
 
         step_losses = []
         preds = []
         for di in range(min(max_dec_len, config.max_dec_steps)):
             y_t_1 = dec_batch[:, di]  # Teacher forcing
-            final_dist, s_t_1,  c_t_1, attn_dist, p_gen, next_coverage = self.model.decoder(y_t_1, s_t_1,
+            final_dist, hidden,  c_t_1, attn_dist, p_gen, next_coverage = self.model.decoder(y_t_1, hidden,
                                                         encoder_outputs, encoder_feature, encoder_sec_outputs, enc_padding_mask, sec_padding_mask, c_t_1,
                                                         extra_zeros, enc_batch_extend_vocab,
                                                                            coverage, di)
@@ -117,7 +114,6 @@ class Train(object):
 
         self.norm = clip_grad_norm_(self.model.encoder.parameters(), config.max_grad_norm)
         clip_grad_norm_(self.model.decoder.parameters(), config.max_grad_norm)
-        clip_grad_norm_(self.model.reduce_state.parameters(), config.max_grad_norm)
 
         self.optimizer.step()
 
