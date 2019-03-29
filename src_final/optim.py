@@ -7,6 +7,7 @@ class Optimizer(object):
         self.lr = lr
         self.acc = acc
         self.max_grad_norm = max_grad_norm
+        self.optim = None
 
     def set_parameters(self, params):
         self.params = [param for param in list(params) if param.requires_grad]

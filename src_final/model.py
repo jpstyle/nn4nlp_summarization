@@ -209,7 +209,7 @@ class Decoder(nn.Module):
         return final_dist, hidden, context, attn_dist, p_gen, coverage
 
 class Model(nn.Module):
-    def __init__(self, model_file_path=None):
+    def __init__(self):
         super(Model, self).__init__()
         encoder = Encoder()
         decoder = Decoder()
@@ -217,11 +217,6 @@ class Model(nn.Module):
 
         self.encoder = encoder
         self.decoder = decoder
-
-        if model_file_path is not None:
-            state = torch.load(model_file_path, map_location= lambda storage, location: storage)
-            self.encoder.load_state_dict(state['encoder_state_dict'])
-            self.decoder.load_state_dict(state['decoder_state_dict'], strict=False)
 
     def forward(self, batch):
         enc_batch, enc_padding_mask, sec_padding_mask, enc_lens, enc_sec_lens, enc_batch_extend_vocab, extra_zeros, context, coverage = \

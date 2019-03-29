@@ -20,7 +20,7 @@ parser.add_argument('-verbose', action='store_true', default=True)
 
 parser.add_argument('-log_root', type=str, action='store', default='log')
 parser.add_argument('-print_interval', type=int, action='store', default=5)
-parser.add_argument('-save_interval', type=int, action='store', default=3000)
+parser.add_argument('-save_interval', type=int, action='store', default=10)
 
 
 parser.add_argument('-save_dir', type=str, action='store', default='test', help="path to save the trained model")
@@ -37,7 +37,7 @@ parser.add_argument('-max_iterations', type=int, action='store', default=500000)
 
 parser.add_argument('-emb_dim', type=int, action='store', default=128)
 parser.add_argument('-hidden_dim', type=int, action='store', default=256)
-parser.add_argument('-batch_size', type=int, action='store', default=8)
+parser.add_argument('-batch_size', type=int, action='store', default=2)
 parser.add_argument('-beam_size', type=int, action='store', default=4)
 parser.add_argument('-vocab_size', type=int, action='store', default=50006)
 parser.add_argument('-batch_shuffle_window', type=int, action='store', default=1)
