@@ -15,7 +15,8 @@ from torch.nn.utils import clip_grad_norm_
 
 from torch.optim import Adagrad
 
-from data_util import config
+# from data_util import config
+from config import config
 from data_util.batcher import Batcher
 from data_util.data import Vocab
 from data_util.utils import calc_running_avg_loss
@@ -142,13 +143,5 @@ class Train(object):
                 self.save_model(running_avg_loss, iter)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Train script")
-    parser.add_argument("-m",
-                        dest="model_file_path", 
-                        required=False,
-                        default=None,
-                        help="Model file for retraining (default: None).")
-    args = parser.parse_args()
-    
     train_processor = Train()
-    train_processor.trainIters(config.max_iterations, args.model_file_path)
+    train_processor.trainIters(config.max_iterations, config.train_from)
