@@ -6,59 +6,31 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from config import config
 from numpy import random
-
-use_cuda = config.use_gpu and torch.cuda.is_available()
-
-random.seed(123)
-torch.manual_seed(123)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(123)
-
-def init_lstm_wt(lstm):
-    for names in lstm._all_weights:
-        for name in names:
-            if name.startswith('weight_'):
-                wt = getattr(lstm, name)
-                wt.data.uniform_(-config.rand_unif_init_mag, config.rand_unif_init_mag)
-            elif name.startswith('bias_'):
-                # set forget bias to 1
-                bias = getattr(lstm, name)
-                n = bias.size(0)
-                start, end = n // 4, n // 2
-                bias.data.fill_(0.)
-                bias.data[start:end].fill_(1.)
-
-def init_linear_wt(linear):
-    linear.weight.data.normal_(std=config.trunc_norm_init_std)
-    if linear.bias is not None:
-        linear.bias.data.normal_(std=config.trunc_norm_init_std)
-
-def init_wt_normal(wt):
-    wt.data.normal_(std=config.trunc_norm_init_std)
-
-def init_wt_unif(wt):
-    wt.data.uniform_(-config.rand_unif_init_mag, config.rand_unif_init_mag)
+from utils import initialize_lstm, get_input_from_batch, get_output_from_batch
 
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
         self.embedding = nn.Embedding(config.vocab_size, config.emb_dim)
-        init_wt_normal(self.embedding.weight)
+        self.embedding.weight.data.normal_(std=config.trunc_norm_init_std)
 
-        self.lstm = nn.LSTM(config.emb_dim, config.hidden_dim, num_layers=1, batch_first=True, bidirectional=True)
-        self.lstm_sec = nn.LSTM(config.hidden_dim, config.hidden_dim, num_layers=1, batch_first=True, bidirectional=True)
-        init_lstm_wt(self.lstm)
-        init_lstm_wt(self.lstm_sec)
+        self.lstm = nn.LSTM(config.emb_dim, config.hidden_dim, num_layers=config.enc_layers, bidirectional=config.enc_bidi, batch_first=True)
+        self.lstm_sec = nn.LSTM(config.hidden_dim, config.hidden_dim, num_layers=config.enc_layers, bidirectional=config.enc_bidi, batch_first=True)
+        initialize_lstm(self.lstm)
+        initialize_lstm(self.lstm_sec)
 
         self.W_sec = nn.Linear(config.hidden_dim*2, config.hidden_dim)
         self.W_h = nn.Linear(config.hidden_dim * 2, config.hidden_dim * 2, bias=False)
 
         self.reduce_h = nn.Linear(config.hidden_dim * 2, config.hidden_dim)
-        init_linear_wt(self.reduce_h)
-        self.reduce_c = nn.Linear(config.hidden_dim * 2, config.hidden_dim)
-        init_linear_wt(self.reduce_c)
+        self.reduce_h.weight.data.normal_(std=config.trunc_norm_init_std)
+        self.reduce_h.bias.data.normal_(std=config.trunc_norm_init_std)
 
-    def reduce_state(self, hidden):
+        self.reduce_c = nn.Linear(config.hidden_dim * 2, config.hidden_dim)
+        self.reduce_c.weight.data.normal_(std=config.trunc_norm_init_std)
+        self.reduce_c.bias.data.normal_(std=config.trunc_norm_init_std)
+
+    def _reduce_state(self, hidden):
         h, c = hidden # h, c dim = 2 x b x hidden_dim
         h_in = h.transpose(0, 1).contiguous().view(-1, config.hidden_dim * 2)
         hidden_reduced_h = F.relu(self.reduce_h(h_in))
@@ -88,7 +60,7 @@ class Encoder(nn.Module):
         encoder_feature = encoder_outputs.view(-1, 2*config.hidden_dim)  # B * t_k x 2*hidden_dim
         encoder_feature = self.W_h(encoder_feature)
 
-        hidden = self.reduce_state(hidden)
+        hidden = self._reduce_state(hidden)
 
         return encoder_outputs, encoder_feature, encoder_sec_outputs, hidden
 
@@ -102,14 +74,14 @@ class SectionAttention(nn.Module):
         self.v = nn.Linear(config.hidden_dim * 2, 1, bias=False)
 
     def forward(self, s_t_hat, encoder_section_outputs, sec_padding_mask):
-        b, secL, n = encoder_section_outputs.shape
+        batch, secL, dim = encoder_section_outputs.shape
 
         encoder_section_feature = encoder_section_outputs.view(-1, 2*config.hidden_dim)  # B * t_k x 2*hidden_dim
         encoder_section_feature = self.w_h(encoder_section_feature)
 
         dec_fea = self.w_d(s_t_hat) # B x 2*hidden_dim
-        dec_fea_expanded = dec_fea.unsqueeze(1).expand(b, secL, n).contiguous() # B x secL x 2*hidden_dim
-        dec_fea_expanded = dec_fea_expanded.view(-1, n)  # B * secL x 2*hidden_dim
+        dec_fea_expanded = dec_fea.unsqueeze(1).expand(batch, secL, dim).contiguous() # B x secL x 2*hidden_dim
+        dec_fea_expanded = dec_fea_expanded.view(-1, dim)  # B * secL x 2*hidden_dim
 
         att_features = encoder_section_feature + dec_fea_expanded # B * secL x 2*hidden_dim
         e = torch.tanh(att_features) # B * secL x 2*hidden_dim
@@ -117,8 +89,7 @@ class SectionAttention(nn.Module):
         scores = scores.view(-1, secL)  # B x secL
 
         attn_dist_ = F.softmax(scores, dim=1)*sec_padding_mask # B x secL
-        normalization_factor = attn_dist_.sum(1, keepdim=True)
-        attn_dist = attn_dist_ / normalization_factor # B x secL
+        attn_dist = attn_dist_ / attn_dist_.sum(1, keepdim=True) # B x secL
         return attn_dist
 
 class Attention(nn.Module):
@@ -131,11 +102,11 @@ class Attention(nn.Module):
         self.v = nn.Linear(config.hidden_dim * 2, 1, bias=False)
 
     def forward(self, s_t_hat, encoder_outputs, encoder_feature, enc_padding_mask, sec_attn, coverage):
-        b, t_k, n = list(encoder_outputs.size())
+        batch, src_len, dim = encoder_outputs.shape
 
         dec_fea = self.decode_proj(s_t_hat) # B x 2*hidden_dim
-        dec_fea_expanded = dec_fea.unsqueeze(1).expand(b, t_k, n).contiguous() # B x t_k x 2*hidden_dim
-        dec_fea_expanded = dec_fea_expanded.view(-1, n)  # B * t_k x 2*hidden_dim
+        dec_fea_expanded = dec_fea.unsqueeze(1).expand(batch, src_len, dim).contiguous() # B x t_k x 2*hidden_dim
+        dec_fea_expanded = dec_fea_expanded.view(-1, dim)  # B * t_k x 2*hidden_dim
 
         att_features = encoder_feature + dec_fea_expanded # B * t_k x 2*hidden_dim
         if config.is_coverage:
@@ -145,25 +116,24 @@ class Attention(nn.Module):
 
         e = torch.tanh(att_features) # B * t_k x 2*hidden_dim
         scores = self.v(e)  # B * t_k x 1
-        scores = scores.view(-1, t_k)  # B x t_k
+        scores = scores.view(-1, src_len)  # B x t_k
 
         secL = sec_attn.size(1)
-        wordL = int(t_k/secL)
-        sec_attn = sec_attn.unsqueeze(2).repeat(1,1,wordL).view(b,-1) # B x t_k
+        wordL = int(src_len/secL)
+        sec_attn = sec_attn.unsqueeze(2).repeat(1,1,wordL).view(batch,-1) # B x t_k
 
         attn_dist_ = torch.einsum("bl,bl->bl",sec_attn, scores)
         attn_dist_ = F.softmax(scores, dim=1)*enc_padding_mask # B x t_k
-        normalization_factor = attn_dist_.sum(1, keepdim=True)
-        attn_dist = attn_dist_ / normalization_factor
+        attn_dist = attn_dist_ / attn_dist_.sum(1, keepdim=True)
 
         attn_dist = attn_dist.unsqueeze(1)  # B x 1 x t_k
         c_t = torch.bmm(attn_dist, encoder_outputs)  # B x 1 x n
         c_t = c_t.view(-1, config.hidden_dim * 2)  # B x 2*hidden_dim
 
-        attn_dist = attn_dist.view(-1, t_k)  # B x t_k
+        attn_dist = attn_dist.view(-1, src_len)  # B x t_k
 
         if config.is_coverage:
-            coverage = coverage.view(-1, t_k)
+            coverage = coverage.view(-1, src_len)
             coverage = coverage + attn_dist
 
         return c_t, attn_dist, coverage
@@ -171,46 +141,45 @@ class Attention(nn.Module):
 class Decoder(nn.Module):
     def __init__(self):
         super(Decoder, self).__init__()
+        self.hidden_dim = config.hidden_dim
+        self.embedding = nn.Embedding(config.vocab_size, config.emb_dim)
         self.attention_network = Attention()
         self.attention_section_network = SectionAttention()
-        # decoder
-        self.embedding = nn.Embedding(config.vocab_size, config.emb_dim)
-        init_wt_normal(self.embedding.weight)
-
-        self.x_context = nn.Linear(config.hidden_dim * 2 + config.emb_dim, config.emb_dim)
+        self.combine_context = nn.Linear(config.hidden_dim * 2 + config.emb_dim, config.emb_dim)
 
         self.lstm = nn.LSTM(config.emb_dim, config.hidden_dim, num_layers=1, batch_first=True, bidirectional=False)
-        init_lstm_wt(self.lstm)
+        initialize_lstm(self.lstm)
 
         if config.pointer_gen:
             self.p_gen_linear = nn.Linear(config.hidden_dim * 4 + config.emb_dim, 1)
 
         #p_vocab
         self.out1 = nn.Linear(config.hidden_dim * 3, config.hidden_dim)
-        self.out2 = nn.Linear(config.hidden_dim, config.vocab_size)
-        init_linear_wt(self.out2)
+        self.out1.weight.data.normal_(std=config.trunc_norm_init_std)
+        self.out1.bias.data.normal_(std=config.trunc_norm_init_std)
 
-    def forward(self, y_t_1, s_t_1, encoder_outputs, encoder_feature, encoder_sec_outputs, enc_padding_mask, sec_padding_mask, 
-                c_t_1, extra_zeros, enc_batch_extend_vocab, coverage, step):
+        self.out2 = nn.Linear(config.hidden_dim, config.vocab_size)
+        self.out2.weight.data.normal_(std=config.trunc_norm_init_std)
+        self.out2.bias.data.normal_(std=config.trunc_norm_init_std)
+
+    def forward(self, inp, hidden, encoder_outputs, encoder_feature, encoder_sec_outputs, enc_padding_mask, sec_padding_mask, 
+                prev_context, extra_zeros, enc_batch_extend_vocab, coverage, step):
 
         if not self.training and step == 0:
-            h_decoder, c_decoder = s_t_1
-            s_t_hat = torch.cat((h_decoder.view(-1, config.hidden_dim),
-                                 c_decoder.view(-1, config.hidden_dim)), 1)  # B x 2*hidden_dim
-            sec_attn_dist = self.attention_section_network(s_t_hat, encoder_sec_outputs, sec_padding_mask)
-            c_t, _, coverage_next = self.attention_network(s_t_hat, encoder_outputs, encoder_feature,
+            h, c = hidden
+            dec_state = torch.cat((h.view(-1, self.hidden_dim), c.view(-1, self.hidden_dim)), 1)  # B x 2*hidden_dim
+            sec_attn_dist = self.attention_section_network(dec_state, encoder_sec_outputs, sec_padding_mask)
+            c_t, _, coverage_next = self.attention_network(dec_state, encoder_outputs, encoder_feature,
                                                               enc_padding_mask, sec_attn_dist, coverage)
             coverage = coverage_next
 
-        y_t_1_embd = self.embedding(y_t_1)
-        x = self.x_context(torch.cat((c_t_1, y_t_1_embd), 1))
-        lstm_out, s_t = self.lstm(x.unsqueeze(1), s_t_1)
+        inp = self.embedding(inp)
+        inp = self.combine_context(torch.cat((prev_context, inp), 1))
+        lstm_out, hidden = self.lstm(inp.unsqueeze(1), hidden)
 
-        h_decoder, c_decoder = s_t
-        s_t_hat = torch.cat((h_decoder.view(-1, config.hidden_dim),
-                             c_decoder.view(-1, config.hidden_dim)), 1)  # B x 2*hidden_dim
-        sec_attn_dist = self.attention_section_network(s_t_hat, encoder_sec_outputs, sec_padding_mask)
-        c_t, attn_dist, coverage_next = self.attention_network(s_t_hat, encoder_outputs, encoder_feature,
+        dec_state = torch.cat((hidden[0].view(-1, config.hidden_dim), hidden[1].view(-1, config.hidden_dim)), 1)  # B x 2*hidden_dim
+        sec_attn_dist = self.attention_section_network(dec_state, encoder_sec_outputs, sec_padding_mask)
+        context, attn_dist, coverage_next = self.attention_network(dec_state, encoder_outputs, encoder_feature,
                                                           enc_padding_mask, sec_attn_dist, coverage)
 
         if self.training or step > 0:
@@ -218,15 +187,12 @@ class Decoder(nn.Module):
 
         p_gen = None
         if config.pointer_gen:
-            p_gen_input = torch.cat((c_t, s_t_hat, x), 1)  # B x (2*2*hidden_dim + emb_dim)
+            p_gen_input = torch.cat((context, dec_state, inp), 1)  # B x (2*2*hidden_dim + emb_dim)
             p_gen = self.p_gen_linear(p_gen_input)
             p_gen = torch.sigmoid(p_gen)
 
-        output = torch.cat((lstm_out.view(-1, config.hidden_dim), c_t), 1) # B x hidden_dim * 3
+        output = torch.cat((lstm_out.view(-1, self.hidden_dim), context), 1) # B x hidden_dim * 3
         output = self.out1(output) # B x hidden_dim
-
-        #output = F.relu(output)
-
         output = self.out2(output) # B x vocab_size
         vocab_dist = F.softmax(output, dim=1)
 
@@ -241,21 +207,14 @@ class Decoder(nn.Module):
         else:
             final_dist = vocab_dist
 
-        return final_dist, s_t, c_t, attn_dist, p_gen, coverage
+        return final_dist, hidden, context, attn_dist, p_gen, coverage
 
-class Model(object):
-    def __init__(self, model_file_path=None, is_eval=False):
+class Model(nn.Module):
+    def __init__(self, model_file_path=None):
+        super(Model, self).__init__()
         encoder = Encoder()
         decoder = Decoder()
         decoder.embedding.weight = encoder.embedding.weight
-
-        if is_eval:
-            encoder = encoder.eval()
-            decoder = decoder.eval()
-
-        if use_cuda:
-            encoder = encoder.cuda()
-            decoder = decoder.cuda()
 
         self.encoder = encoder
         self.decoder = decoder
@@ -264,3 +223,37 @@ class Model(object):
             state = torch.load(model_file_path, map_location= lambda storage, location: storage)
             self.encoder.load_state_dict(state['encoder_state_dict'])
             self.decoder.load_state_dict(state['decoder_state_dict'], strict=False)
+
+    def forward(self, batch):
+        enc_batch, enc_padding_mask, sec_padding_mask, enc_lens, enc_sec_lens, enc_batch_extend_vocab, extra_zeros, context, coverage = \
+            get_input_from_batch(batch, config.use_gpu)
+        dec_batch, dec_padding_mask, max_dec_len, dec_lens_var, target_batch = \
+            get_output_from_batch(batch, config.use_gpu)
+
+        encoder_outputs, encoder_feature, encoder_sec_outputs, hidden = self.encoder(enc_batch, enc_lens, enc_sec_lens, batch.sec_num, batch.sec_len)
+
+        step_losses = []
+        preds = []
+        for t in range(min(max_dec_len, config.max_dec_steps)):
+            inputs = dec_batch[:, t]  # Teacher forcing
+            final_dist, hidden,  context, attn_dist, p_gen, next_coverage = self.decoder(inputs, hidden,
+                                                        encoder_outputs, encoder_feature, encoder_sec_outputs, enc_padding_mask, sec_padding_mask, context,
+                                                        extra_zeros, enc_batch_extend_vocab,
+                                                                           coverage, t)
+            target = target_batch[:, t].unsqueeze(1)
+            preds.append(final_dist[0].argmax().item())
+            gold_probs = torch.gather(final_dist, 1, target).squeeze()
+            step_loss = -torch.log(gold_probs + config.eps)
+            if config.is_coverage:
+                step_coverage_loss = torch.sum(torch.min(attn_dist, coverage), 1)
+                step_loss = step_loss + config.cov_loss_wt * step_coverage_loss
+                coverage = next_coverage
+                
+            step_mask = dec_padding_mask[:, t]
+            step_loss = step_loss * step_mask
+            step_losses.append(step_loss)
+
+        sum_losses = torch.sum(torch.stack(step_losses, 1), 1)
+        batch_avg_loss = sum_losses/dec_lens_var
+        loss = torch.mean(batch_avg_loss)
+        return loss, preds

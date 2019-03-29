@@ -1,12 +1,6 @@
-#Except for the pytorch part content of this file is copied from https://github.com/abisee/pointer-generator/blob/master/
-
 from __future__ import unicode_literals, print_function, division
 
 import sys
-
-# reload(sys)
-# sys.setdefaultencoding('utf8')
-
 import os
 import time
 

@@ -61,3 +61,23 @@ def get_output_from_batch(batch, use_cuda):
 
   return dec_batch, dec_padding_mask, max_dec_len, dec_lens_var, target_batch
 
+
+
+def initialize_lstm(lstm):
+  weights = []
+  biases = []
+  for wns in lstm._all_weights:
+    for wn in wns:
+      if wn.startswith('weight'):
+        weights.append(wn)
+      elif wn.startswith('bias'):
+        biases.append(wn)
+
+  for w in weights:
+    weight = getattr(lstm, w) 
+    weight.data.uniform_(-config.rand_unif_init_mag, config.rand_unif_init_mag)
+
+  for b in biases:
+    bias = getattr(lstm, b)
+    bias.data.fill_(0.)
+    bias.data[(bias.size(0) // 4):(bias.size(0) // 2)].fill_(1.)
