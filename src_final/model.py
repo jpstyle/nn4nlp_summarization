@@ -39,7 +39,6 @@ class Encoder(nn.Module):
 
         return (hidden_reduced_h.unsqueeze(0), hidden_reduced_c.unsqueeze(0)) # h, c dim = 1 x b x hidden_dim
 
-    #seq_lens should be in descending order
     def forward(self, input, seq_lens, sec_lens, secL, wordL):
         b, l = input.shape
         embedded = self.embedding(input)

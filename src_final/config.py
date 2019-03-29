@@ -20,13 +20,13 @@ parser.add_argument('-verbose', action='store_true', default=True)
 
 parser.add_argument('-log_root', type=str, action='store', default='log')
 parser.add_argument('-print_interval', type=int, action='store', default=5)
-parser.add_argument('-save_interval', type=int, action='store', default=20)
+parser.add_argument('-save_interval', type=int, action='store', default=3000)
 
 
 parser.add_argument('-save_dir', type=str, action='store', default='test', help="path to save the trained model")
-parser.add_argument('-train_from', type=str, action='store', default="", help="path to load the trained model")
+parser.add_argument('-train_from', type=str, action='store', default=None, help="path to load the trained model")
 
-parser.add_argument('-data', type=str, action='store', default='pubmed_clean', help="choose among [arxiv, pubmed]")
+parser.add_argument('-data', type=str, action='store', default='pubmed', help="choose among [arxiv, pubmed]")
 parser.add_argument('-vocab_path', type=str, action='store', default='data/pubmed/vocab')
 parser.add_argument('-seed', type=int, action='store', default=111)
 
@@ -39,7 +39,7 @@ parser.add_argument('-emb_dim', type=int, action='store', default=128)
 parser.add_argument('-hidden_dim', type=int, action='store', default=256)
 parser.add_argument('-batch_size', type=int, action='store', default=8)
 parser.add_argument('-beam_size', type=int, action='store', default=4)
-parser.add_argument('-vocab_size', type=int, action='store', default=50000)
+parser.add_argument('-vocab_size', type=int, action='store', default=50006)
 parser.add_argument('-batch_shuffle_window', type=int, action='store', default=1)
 
 parser.add_argument('-optim', type=str, choices=['adagrad', 'adam', 'sgd'], action='store',default='adagrad', help='[adagrad|adam|sgd]')
@@ -53,6 +53,7 @@ parser.add_argument('-eps', type=float, action='store', default=1e-12)
 
 parser.add_argument('-drop_out', type=float, action='store', default=0.25)
 parser.add_argument('-enc_layers', type=int, action='store', default=1)
+parser.add_argument('-enc_bidi', action='store_true', default=True)
 parser.add_argument('-cov_loss_wt', type=float, action='store', default=1.0, help='Weight of coverage loss (lambda in the paper).')
 
 # limit of lengths
@@ -77,7 +78,7 @@ if config.mode == "decode":
     config.batch_size = config.beam_size
 
 data_basedir = f"{config.data}/" if not config.test else f"data/try_out/{config.data}/"
-config.train_data_path = data_basedir + "chunked/train_*"
+config.train_data_path = data_basedir + "train.txt"
 config.eval_data_path = data_basedir + "val.txt"
 config.decode_data_path = data_basedir + "test.txt"
 config.vocab_path = data_basedir.replace("/try_out", "") + "vocab"

@@ -1,66 +1,90 @@
-from torch.autograd import Variable
 import numpy as np
 import torch
-# from data_util import config
 from config import config
+import tensorflow as tf
 
 def get_input_from_batch(batch, use_cuda):
-  batch_size = len(batch.enc_lens)
+    inputs = []
+    inputs_oov = []
+    sec_padding_mask = []
+    for article in batch.articles:
+        inp = []
+        inp_oov = []
+        for sec in article.secs:
+            inp.extend(sec.word_ids)
+            inp_oov.extend(sec.word_ids_oov)
+        inputs.append(inp)
+        inputs_oov.append(inp_oov)
+        sec_padding_mask.append(article.sec_mask)
 
-  enc_batch = Variable(torch.from_numpy(batch.enc_batch).long())
-  enc_padding_mask = Variable(torch.from_numpy(batch.enc_padding_mask)).float()
-  sec_padding_mask = Variable(torch.from_numpy(batch.enc_sec_padding_mask)).float()
-  enc_lens = batch.enc_lens
-  enc_sec_lens = batch.enc_sec_lens
-  extra_zeros = None
-  enc_batch_extend_vocab = None
+    enc_batch = torch.LongTensor(inputs)
+    enc_padding_mask = enc_batch.ne(0).float().requires_grad_()
+    sec_padding_mask = torch.LongTensor(sec_padding_mask).float().requires_grad_()
 
-  if config.pointer_gen:
-    enc_batch_extend_vocab = Variable(torch.from_numpy(batch.enc_batch_extend_vocab).long())
-    # max_art_oovs is the max over all the article oov list in the batch
-    if batch.max_art_oovs > 0:
-      extra_zeros = Variable(torch.zeros((batch_size, batch.max_art_oovs)))
+    enc_lens = batch.enc_lens
+    extra_zeros = None
+    enc_batch_extend_vocab = None
 
-  c_t_1 = Variable(torch.zeros((batch_size, 2 * config.hidden_dim)))
+    batch_size = len(batch)
+    if config.pointer_gen:
+        enc_batch_extend_vocab = torch.LongTensor(inputs_oov)
+    if batch.max_oov > 0:
+        extra_zeros = torch.zeros((batch_size, batch.max_oov), requires_grad=True)
 
-  coverage = None
-  if config.is_coverage:
-    coverage = Variable(torch.zeros(enc_batch.size()))
+    context = torch.zeros((batch_size, 2 * config.hidden_dim),requires_grad=True)
 
-  if use_cuda:
-    enc_batch = enc_batch.cuda()
-    enc_padding_mask = enc_padding_mask.cuda()
-    sec_padding_mask = sec_padding_mask.cuda()
+    coverage = None
+    if config.is_coverage:
+        coverage = torch.zeros(enc_batch.size(),requires_grad=True)
 
-    if enc_batch_extend_vocab is not None:
-      enc_batch_extend_vocab = enc_batch_extend_vocab.cuda()
-    if extra_zeros is not None:
-      extra_zeros = extra_zeros.cuda()
-    c_t_1 = c_t_1.cuda()
+    if use_cuda:
+        enc_batch = enc_batch.cuda()
+        enc_padding_mask = enc_padding_mask.cuda()
+        c_t_1 = c_t_1.cuda()
+        sec_padding_mask = sec_padding_mask.cuda()
 
-    if coverage is not None:
-      coverage = coverage.cuda()
+        if enc_batch_extend_vocab is not None:
+            enc_batch_extend_vocab = enc_batch_extend_vocab.cuda()
+        if extra_zeros is not None:
+            extra_zeros = extra_zeros.cuda()
+        if coverage is not None:
+            coverage = coverage.cuda()
 
-  return enc_batch, enc_padding_mask, sec_padding_mask, enc_lens, enc_sec_lens, enc_batch_extend_vocab, extra_zeros, c_t_1, coverage
+    return enc_batch, enc_padding_mask, sec_padding_mask, enc_lens, batch.sec_lens, enc_batch_extend_vocab, extra_zeros, context, coverage
 
 def get_output_from_batch(batch, use_cuda):
-  dec_batch = Variable(torch.from_numpy(batch.dec_batch).long())
-  dec_padding_mask = Variable(torch.from_numpy(batch.dec_padding_mask)).float()
-  dec_lens = batch.dec_lens
-  max_dec_len = np.max(dec_lens)
-  dec_lens_var = Variable(torch.from_numpy(dec_lens)).float()
+    targets = []
+    targets_oov = []
+    for abstract in batch.abstracts:
+        targets.append(abstract.word_ids)
+        targets_oov.append(abstract.word_ids_oov)
 
-  target_batch = Variable(torch.from_numpy(batch.target_batch)).long()
+    dec_batch = torch.LongTensor(targets)
+    dec_padding_mask = dec_batch.ne(0).float().requires_grad_()
+    dec_lens = batch.dec_lens
+    max_dec_len = max(dec_lens)
+    dec_lens_var = torch.Tensor(dec_lens).float().requires_grad_()
+    target_batch = torch.LongTensor(targets_oov)
 
-  if use_cuda:
-    dec_batch = dec_batch.cuda()
-    dec_padding_mask = dec_padding_mask.cuda()
-    dec_lens_var = dec_lens_var.cuda()
-    target_batch = target_batch.cuda()
+    if use_cuda:
+        dec_batch = dec_batch.cuda()
+        dec_padding_mask = dec_padding_mask.cuda()
+        dec_lens_var = dec_lens_var.cuda()
+        target_batch = target_batch.cuda()
 
+    return dec_batch, dec_padding_mask, max_dec_len, dec_lens_var, target_batch
 
-  return dec_batch, dec_padding_mask, max_dec_len, dec_lens_var, target_batch
-
+def calc_running_avg_loss(loss, running_avg_loss, summary_writer, step, decay=0.99):
+  if running_avg_loss == 0:  # on the first iteration just take the loss
+    running_avg_loss = loss
+  else:
+    running_avg_loss = running_avg_loss * decay + (1 - decay) * loss
+  running_avg_loss = min(running_avg_loss, 12)  # clip
+  loss_sum = tf.Summary()
+  tag_name = 'running_avg_loss/decay=%f' % (decay)
+  loss_sum.value.add(tag=tag_name, simple_value=running_avg_loss)
+  summary_writer.add_summary(loss_sum, step)
+  return running_avg_loss
 
 
 def initialize_lstm(lstm):

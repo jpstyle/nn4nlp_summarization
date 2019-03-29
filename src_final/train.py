@@ -14,16 +14,13 @@ from torch import nn
 from model import Model
 from optim import Optimizer
 from config import config
-from data_util.batcher import Batcher
-from data_util.data import Vocab
-from data_util.utils import calc_running_avg_loss
+from pre_process import DataLoader, batchify, Vocab
+from utils import calc_running_avg_loss
 
 class Train(object):
     def __init__(self):
-        self.vocab = Vocab(config.vocab_path, config.vocab_size)
-        self.batcher = Batcher(config.train_data_path, self.vocab, mode='train',
-                               batch_size=config.batch_size, single_pass=False)
-        time.sleep(15)
+        self.data = DataLoader(config)
+        self.vocab = self.data.vocab
 
         train_dir = os.path.join(config.log_root,config.save_dir+"_"+str(int(time.time())))
         if not os.path.exists(train_dir):
@@ -34,6 +31,9 @@ class Train(object):
             os.mkdir(self.model_dir)
 
         self.summary_writer = tf.summary.FileWriter(train_dir)
+
+    def get_train_batches(self):
+        return batchify(self.data.get_training_examples(), config.batch_size, self.vocab)
 
     def save_model(self, running_avg_loss, iter):
         state = {
@@ -72,32 +72,35 @@ class Train(object):
 
         return start_iter, start_loss
 
-    def trainIters(self, n_iters, model_file_path=None):
+    def trainEpochs(self, epochs, model_file_path=None):
         iter, running_avg_loss = self.setup_train(model_file_path)
         start = time.time()
-        while iter < n_iters:
-            batch = self.batcher.next_batch()
-            self.optimizer.zero_grad()
-            loss, pred = self.model(batch)
-            loss.backward()
-            self.optimizer.step()
-            loss = loss.item()
 
-            running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, self.summary_writer, iter)
-            iter += 1
+        for ep in range(epochs):
+            batches = self.get_train_batches()
+            for batch in batches:
+                self.optimizer.zero_grad()
+                loss, pred = self.model(batch)
+                loss.backward()
+                self.optimizer.step()
+                loss = loss.item()
 
-            if iter % 100 == 0:
-                self.summary_writer.flush()
+                running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, self.summary_writer, iter)
+                iter += 1
 
-            if iter % config.print_interval == 0:
-                print('steps %d, loss: %f,  seconds for %d batch: %.2f' % (iter, loss, config.print_interval,
-                                                                           time.time() - start))
-                print("output: "+" ".join([self.vocab.get(x, batch.art_oovs[0][max(0,x-len(self.vocab))]) for x in pred]))
-                print("target: "+batch.original_abstracts[0])
-                start = time.time()
-            if iter % config.save_interval == 0:
-                self.save_model(running_avg_loss, iter)
+                if iter % 100 == 0:
+                    self.summary_writer.flush()
+
+                if iter % config.print_interval == 0:
+                    print('steps %d, loss: %f,  seconds for %d batch: %.2f' % (iter, loss, config.print_interval,
+                                                                            time.time() - start))
+                    print("output: "+" ".join([self.vocab.get(x, batch.articles[0].oovv.get(x, " ")) for x in pred]))
+                    print(f"target: {' '.join(batch.abstracts[0].words)}")
+ 
+                    start = time.time()
+                if iter % config.save_interval == 0:
+                    self.save_model(running_avg_loss, iter)
 
 if __name__ == '__main__':
     train_processor = Train()
-    train_processor.trainIters(config.max_iterations, config.train_from)
+    train_processor.trainEpochs(config.max_iterations, config.train_from)
