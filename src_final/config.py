@@ -3,18 +3,19 @@ March 2019
 Xinru Yan
 This is a configuration file, change any parameters here
 """
+import os
 import argparse
+import datetime
 
-# parse arg
 parser = argparse.ArgumentParser(description='Model parameters.')
 
 parser.add_argument('-gpus', default=[], nargs='+', type=int, help="Use CUDA on the listed GPUs.")
-parser.add_argument('-use_gpu', action='store_true', default=False)
+parser.add_argument('-cuda', action='store_true', default=False)
 parser.add_argument('-mode', type=str, choices=['train', 'eval', 'decode'], action='store', default='train')
 
 parser.add_argument('-hier', action='store_true', default=True)
-parser.add_argument('-pointer_gen', action='store_true', default=True)
-parser.add_argument('-is_coverage', action='store_true', default=False)
+parser.add_argument('-pointer', action='store_true', default=True)
+parser.add_argument('-cov', action='store_true', default=False)
 parser.add_argument('-test', action='store_true', default=False)
 parser.add_argument('-verbose', action='store_true', default=True)
 
@@ -59,9 +60,9 @@ parser.add_argument('-cov_loss_wt', type=float, action='store', default=1.0, hel
 # limit of lengths
 parser.add_argument('-max_num_sec', type=int, action='store', default=4, help='Maximum section length')
 
-parser.add_argument('-min_dec_steps', type=int, action='store', default=35, help="only applies for decode mode")
-parser.add_argument('-max_dec_steps', type=int, action='store', default=210)
-parser.add_argument('-max_enc_steps', type=int, action='store', default=2500, help='max encoder timesteps (max source token length)')
+parser.add_argument('-min_dec_len', type=int, action='store', default=35, help="only applies for decode mode")
+parser.add_argument('-max_dec_len', type=int, action='store', default=210)
+parser.add_argument('-max_enc_len', type=int, action='store', default=2500, help='max encoder timesteps (max source token length)')
 parser.add_argument('-max_sec_len', type=int, action='store', default=500, help='Truncate sections')
 # parser.add_argument('-min_section_len', type=int, action='store', default=50, help='Discards short sections (commented out because it was not used in the original code)')
 parser.add_argument('-max_article_len', type=int, action='store', default=2000, help='Maximum input article length')
@@ -74,9 +75,24 @@ parser.add_argument('-max_section_sents', type=int, action='store', default=20, 
 
 config = parser.parse_args()
 
+# in the decode mode, batch size should be the same as the beam size
 if config.mode == "decode":
     config.batch_size = config.beam_size
 
+# indexing save_dirs for model and log
+now = datetime.datetime.now()
+idx = f'{config.save_dir}_{now.month}{now.day}_{now.hour}{now.minute}'
+if not os.path.isdir("models"):
+    os.mkdir("models")
+config.save_dir = f'models/{config.save_dir}_{idx}'
+os.mkdir(config.save_dir)
+config.log_save_dir = f'{config.log_root}/{config.save_dir}_{idx}'
+if not os.path.isdir(config.log_root):
+    os.mkdir(config.log_root)
+if not os.path.isdir(config.log_save_dir):
+    os.mkdir(config.log_save_dir)
+
+# setting actual file path
 data_basedir = f"{config.data}/" if not config.test else f"data/try_out/{config.data}/"
 config.train_data_path = data_basedir + "train.txt"
 config.eval_data_path = data_basedir + "val.txt"

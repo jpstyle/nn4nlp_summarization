@@ -251,14 +251,14 @@ class Abstract(NamedTuple):
         return Abstract(words=abstract_words, word_ids=abstract_word_ids, word_ids_oov=abstract_word_ids_oov)
 
     def padded(self, num_words: int, vocab: Vocab) -> 'Abstract':
-        needed_words_padding = min(num_words, config.max_dec_steps) - len(self)
+        needed_words_padding = min(num_words, config.max_dec_len) - len(self)
         needed_words_padding = max(needed_words_padding, 0)
         assert needed_words_padding >= 0, 'Padding length must be equal to or greater than the number of sentences.'
         padding_word = vocab.PAD
         padding_id = vocab[padding_word]
-        words = self.words[:config.max_dec_steps] + [padding_word] * needed_words_padding
-        word_ids = self.word_ids[:config.max_dec_steps] + [padding_id] * needed_words_padding
-        word_ids_oov = self.word_ids_oov[:config.max_dec_steps] + [padding_id] * needed_words_padding
+        words = self.words[:config.max_dec_len] + [padding_word] * needed_words_padding
+        word_ids = self.word_ids[:config.max_dec_len] + [padding_id] * needed_words_padding
+        word_ids_oov = self.word_ids_oov[:config.max_dec_len] + [padding_id] * needed_words_padding
         return Abstract(words=words, word_ids=word_ids, word_ids_oov=word_ids_oov)
 
 
@@ -292,7 +292,7 @@ class Batch:
         article_max_word_len = min(article_max_word_len, config.max_sec_len)
 
         abstract_max_word_len = max(len(example.abstract) for example in unpadded_examples)
-        abstract_max_word_len = min(abstract_max_word_len, config.max_dec_steps)
+        abstract_max_word_len = min(abstract_max_word_len, config.max_dec_len)
 
         self.article_pad_len = article_sec_length
         self.enc_lens = [min(article_max_word_len, config.max_sec_len)* min(len(example.article), config.max_num_sec) for example in unpadded_examples]
@@ -301,13 +301,13 @@ class Batch:
                                         abstract_max_word_len= abstract_max_word_len,
                                         vocab=vocab) for example in unpadded_examples]
         examples, self.enc_lens, self.sec_lens = zip(*[(e,l,s) for e, l, s in sorted(zip(examples,self.enc_lens, self.sec_lens), key=lambda pair: (-pair[1], -pair[2]))])
-        self.dec_lens = [min(len(example.abstract), config.max_dec_steps) for example in unpadded_examples]
+        self.dec_lens = [min(len(example.abstract), config.max_dec_len) for example in unpadded_examples]
         self.articles = [example.article for example in examples]
         self.abstracts = [example.abstract for example in examples]
         self.max_oov = max([len(example.article.oovv) for example in examples])
         self.sec_num = min(article_sec_length, config.max_num_sec)
         self.sec_len = min(article_max_word_len, config.max_sec_len)
-        self.dec_len = min(abstract_max_word_len, config.max_dec_steps)
+        self.dec_len = min(abstract_max_word_len, config.max_dec_len)
 
     def __len__(self):
         return len(self.articles)

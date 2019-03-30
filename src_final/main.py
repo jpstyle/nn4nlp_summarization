@@ -1,5 +1,10 @@
 from __future__ import unicode_literals, print_function, division
 
+# import ptvsd
+# ptvsd.enable_attach(address=('localhost', 99), redirect_output=True)
+# ptvsd.wait_for_attach()
+
+
 import os
 import time
 import torch
@@ -16,7 +21,7 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
     def get_train_batches():
         return batchify(data.get_training_examples(), config.batch_size, vocab)
 
-    model, optim, iter, running_avg_loss = get_model(model_file_path)
+    model, optim, iter, avg_loss = get_model(model_file_path)
     start = time.time()
 
     for ep in range(epochs):
@@ -27,24 +32,26 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
             loss.backward()
             optim.step()
             loss = loss.item()
-
-            running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, logger, iter)
+            avg_loss = get_avg_loss(loss, avg_loss, logger, iter)
+            
             iter += 1
             if iter % config.print_interval == 0:
                 logger.flush()
-                print('steps %d, loss: %f,  seconds for %d batch: %.2f' % (iter, loss, config.print_interval,
-                                                                        time.time() - start))
-                print("output: "+" ".join([vocab.get(x, batch.articles[0].oovv.get(x, " ")) for x in pred]))
-                print(f"target: {' '.join(batch.abstracts[0].words)}")
-
+                time_took = time.time()-start
                 start = time.time()
+                print(f'epoch {ep} ({iter} steps); loss: {loss:.4f}, time: {time_took:.2f} ({time_took/config.print_interval} step/s)')
+                try:
+                    print("output: "+" ".join([vocab.get(x, batch.articles[0].oovv.get(x, " ")) for x in pred]))
+                    print(f"target: {' '.join(batch.abstracts[0].words)}")
+                except:
+                    pass
             if iter % config.save_interval == 0:
                 checkpoint = {
                     'model': model.module.state_dict() if len(config.gpus) > 1 else model.state_dict(),
                     'config': config,
                     'iter': iter,
                     'optimizer': optim.optim.state_dict(),
-                    'loss': running_avg_loss
+                    'loss': avg_loss
                 }
                 model_save_path = os.path.join(model_save_dir, 'model_%d_%d' % (iter, int(time.time())))
                 torch.save(checkpoint, model_save_path)
@@ -52,17 +59,8 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
 def main(model_path):
     data = DataLoader(config)
     vocab = data.vocab
-
-    model_save_dir = os.path.join("models",config.save_dir+"_"+str(int(time.time())))
-    if not os.path.isdir(model_save_dir):
-        os.mkdir(model_save_dir)
-
-    log_save_dir = os.path.join(config.log_root,config.save_dir+"_"+str(int(time.time())))
-    if not os.path.isdir(log_save_dir):
-        os.mkdir(log_save_dir)
-    logger = tf.summary.FileWriter(log_save_dir)
-
-    trainEpochs(config.ep, data, vocab, model_save_dir, model_path, logger)
+    logger = tf.summary.FileWriter(config.log_save_dir)
+    trainEpochs(config.ep, data, vocab, config.save_dir, model_path, logger)
 
 if __name__ == '__main__':
     main(config.train_from)
