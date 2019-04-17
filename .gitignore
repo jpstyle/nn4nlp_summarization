@@ -1,8 +1,5 @@
-data/arxiv-release
-data/pubmed-release
-data/arxiv
-data/pubmed
-data/try_out
+data/pubmed/*.txt
+
 logs/
 models/
 __pycache__/
