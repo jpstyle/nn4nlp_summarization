@@ -1,8 +1,3 @@
-"""
-March 2019
-Xinru Yan
-This is a configuration file, change any parameters here
-"""
 import os
 import argparse
 import datetime
@@ -10,10 +5,10 @@ import datetime
 parser = argparse.ArgumentParser(description='Model parameters.')
 
 parser.add_argument('-gpus', default=[], nargs='+', type=int, help="Use CUDA on the listed GPUs.")
-parser.add_argument('-cuda', action='store_true', default=False)
 parser.add_argument('-mode', type=str, choices=['train', 'eval', 'decode'], action='store', default='train')
 
 parser.add_argument('-hier', action='store_true', default=True)
+parser.add_argument('-hard', action='store_true', default=False)
 parser.add_argument('-pointer', action='store_true', default=True)
 parser.add_argument('-cov', action='store_true', default=False)
 parser.add_argument('-test', action='store_true', default=False)
@@ -40,7 +35,7 @@ parser.add_argument('-emb_dim', type=int, action='store', default=128)
 parser.add_argument('-hidden_dim', type=int, action='store', default=256)
 parser.add_argument('-batch_size', type=int, action='store', default=2)
 parser.add_argument('-beam_size', type=int, action='store', default=4)
-parser.add_argument('-vocab_size', type=int, action='store', default=50006)
+parser.add_argument('-vocab_size', type=int, action='store', default=50000)
 parser.add_argument('-batch_shuffle_window', type=int, action='store', default=1)
 
 parser.add_argument('-optim', type=str, choices=['adagrad', 'adam', 'sgd'], action='store',default='adagrad', help='[adagrad|adam|sgd]')
@@ -85,7 +80,8 @@ idx = f'{config.save_dir}_{now.month}{now.day}_{now.hour}{now.minute}'
 if not os.path.isdir("models"):
     os.mkdir("models")
 config.save_dir = f'models/{config.save_dir}_{idx}'
-os.mkdir(config.save_dir)
+if not os.path.isdir(config.save_dir):
+    os.mkdir(config.save_dir)
 config.log_save_dir = f'{config.log_root}/{config.save_dir}_{idx}'
 if not os.path.isdir(config.log_root):
     os.mkdir(config.log_root)
@@ -93,7 +89,7 @@ if not os.path.isdir(config.log_save_dir):
     os.mkdir(config.log_save_dir)
 
 # setting actual file path
-data_basedir = f"{config.data}/" if not config.test else f"data/try_out/{config.data}/"
+data_basedir = f"data/{config.data}/" if not config.test else f"data/try_out/{config.data}/"
 config.train_data_path = data_basedir + "train.txt"
 config.eval_data_path = data_basedir + "val.txt"
 config.decode_data_path = data_basedir + "test.txt"

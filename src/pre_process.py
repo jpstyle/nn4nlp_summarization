@@ -90,7 +90,7 @@ class Vocab(Labeler):
 
     SPECIAL_WORDS = [PAD, UNK, START_DECODING, STOP_DECODING, SOS, EOS]
 
-    def __init__(self, *vocab_files):
+    def __init__(self, vocab_size, *vocab_files):
         super().__init__()
 
         for word in self.SPECIAL_WORDS:
@@ -99,6 +99,8 @@ class Vocab(Labeler):
         for file in vocab_files:
             with open(file, 'r') as fp:
                 for line in fp:
+                    if len(self) >= vocab_size:
+                        break
                     word, _ = line.split()  # each line should be in the format "word freq"
                     assert word not in self.SPECIAL_WORDS, f'Vocab can\'t contain any of: {self.SPECIAL_WORDS}'
                     self.add(word)
@@ -234,6 +236,8 @@ class Abstract(NamedTuple):
 
         for sent in obj:
             words = sent.split()
+            while "<S>" in words: words.remove("<S>") # Disregard SOS tokens; only keep EOS signal
+
             words_ids: List[int] = []
             words_ids_oov: List[int] = []
             for word in words:
@@ -326,7 +330,7 @@ class DataLoader:
         self.vocab_file_path = config.vocab_path
         self.train_file_path = config.train_data_path
         print('building vocabs from the vocab file')
-        self.vocab = Vocab(self.vocab_file_path)
+        self.vocab = Vocab(cfg.vocab_size, self.vocab_file_path)
 
         print(f'vocab size is {len(self.vocab)}')
 

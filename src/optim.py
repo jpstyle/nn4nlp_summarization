@@ -14,7 +14,8 @@ class Optimizer(object):
         if self.method == 'sgd':
             self.optim = optim.SGD(self.params, lr=self.lr)
         elif self.method == 'adagrad':
-            self.optim = optim.Adagrad(self.params, lr=self.lr, initial_accumulator_value=self.acc)
+            # self.optim = optim.Adagrad(self.params, lr=self.lr, initial_accumulator_value=self.acc)
+            self.optim = optim.Adagrad(self.params)
         elif self.method == 'adam':
             self.optim = optim.Adam(self.params, lr=self.lr)
         else:

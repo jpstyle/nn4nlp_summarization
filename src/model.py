@@ -10,7 +10,7 @@ from utils import init, batch2input, batch2output
 class Encoder(nn.Module):
     def __init__(self):
         super(Encoder, self).__init__()
-        self.embedding = nn.Embedding(config.vocab_size, config.emb_dim)
+        self.embedding = nn.Embedding(config.vocab_size, config.emb_dim, padding_idx=0)
         self.embedding.weight.data.normal_(std=config.trunc_norm_init_std)
 
         self.lstm = nn.LSTM(config.emb_dim, config.hidden_dim, num_layers=config.enc_layers, bidirectional=config.enc_bidi, batch_first=True)
@@ -41,18 +41,37 @@ class Encoder(nn.Module):
         b, l = input.shape
         embedded = self.embedding(input)
 
-        packed = nn.utils.rnn.pack_padded_sequence(embedded, seq_lens, batch_first=True)
-        output, hidden = self.lstm(packed)
+        section_encodings = []
+        section_reps = []
 
-        enc_outputs, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True).contiguous()
-        enc_feature = enc_outputs.view(-1, 2*config.hidden_dim)
+        for i in range(secL):
+            packed = nn.utils.rnn.pack_padded_sequence(embedded[:,i*wordL:(i+1)*wordL,:], [wordL]*b, batch_first=True)
+            output, hidden = self.lstm(packed)
+            enc_outputs, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True)
+            enc_outputs = enc_outputs.contiguous()
+
+            section_encodings.append(enc_outputs)
+            section_reps.append(self.w_sec(hidden[0].view(-1, 2*config.hidden_dim)))
+
+        enc_outputs = torch.cat(section_encodings, dim=1)
+        sec_input = torch.stack(section_reps, dim=1)
+
+        # packed = nn.utils.rnn.pack_padded_sequence(embedded, seq_lens, batch_first=True)
+        # output, hidden = self.lstm(packed)
+
+        # enc_outputs, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True)
+        # enc_outputs = enc_outputs.contiguous()
+
+        enc_feature = enc_outputs.view(b, -1, 2*config.hidden_dim)
         enc_feature = self.w_feat(enc_feature)
 
-        sec_input = enc_outputs.view(b, secL, wordL, -1)[:,:,-1,:]
-        sec_input = self.w_sec(sec_input)
+        # sec_input = enc_outputs.view(b, secL, wordL, -1)[:,:,-1,:]
+        # sec_input = self.w_sec(sec_input)
         packed_sec = nn.utils.rnn.pack_padded_sequence(sec_input, sec_lens, batch_first=True)
         output, hidden = self.lstm_sec(packed_sec)
-        enc_sec_outputs, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True).contiguous()
+
+        enc_sec_outputs, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True)
+        enc_sec_outputs = enc_sec_outputs.contiguous()
 
         hidden = self._reduce_state(hidden)
 
@@ -93,11 +112,11 @@ class Attention(nn.Module):
         batch, src_len, dim = enc_output.shape
 
         dec_feature = self.decode_proj(dec_hidden).unsqueeze(1).expand(batch, src_len, dim).contiguous()
-        dec_feature = dec_feature.view(-1, dim)
+        dec_feature = dec_feature.view(batch, -1, dim)
 
         att_features = enc_feature + dec_feature
         if config.cov:
-            coverage_input = coverage.view(-1, 1)
+            coverage_input = coverage.view(batch, -1, 1)
             coverage_feature = self.w_cov(coverage_input)
             att_features = att_features + coverage_feature
 
@@ -123,7 +142,7 @@ class Decoder(nn.Module):
     def __init__(self):
         super(Decoder, self).__init__()
         self.hidden_dim = config.hidden_dim
-        self.embedding = nn.Embedding(config.vocab_size, config.emb_dim)
+        self.embedding = nn.Embedding(config.vocab_size, config.emb_dim, padding_idx=0)
         self.attn = Attention()
         self.attn_sec = SectionAttention()
         self.combine_context = nn.Linear(config.hidden_dim * 2 + config.emb_dim, config.emb_dim)
@@ -134,13 +153,9 @@ class Decoder(nn.Module):
         if config.pointer:
             self.generation_p = nn.Linear(config.hidden_dim * 4 + config.emb_dim, 1)
 
-        self.out1 = nn.Linear(config.hidden_dim * 3, config.hidden_dim)
-        self.out1.weight.data.normal_(std=config.trunc_norm_init_std)
-        self.out1.bias.data.normal_(std=config.trunc_norm_init_std)
-
-        self.out2 = nn.Linear(config.hidden_dim, config.vocab_size)
-        self.out2.weight.data.normal_(std=config.trunc_norm_init_std)
-        self.out2.bias.data.normal_(std=config.trunc_norm_init_std)
+        self.out = nn.Linear(config.hidden_dim * 3, config.vocab_size)
+        self.out.weight.data.normal_(std=config.trunc_norm_init_std)
+        self.out.bias.data.normal_(std=config.trunc_norm_init_std)
 
     def forward(self, inp, hidden, enc_outputs, enc_feature, enc_sec_output, enc_mask, sec_mask, 
                 prev_context, zeros_oov, enc_input_oov, coverage, step):
@@ -172,8 +187,7 @@ class Decoder(nn.Module):
             p_gen = None
 
         output = torch.cat((lstm_out.view(-1, self.hidden_dim), context), 1)
-        output = self.out1(output)
-        output = self.out2(output)
+        output = self.out(output)
         vocab_dist = self.softmax(output)
 
         if config.pointer:
@@ -196,19 +210,19 @@ class Model(nn.Module):
             self.decoder.embedding.weight = self.encoder.embedding.weight
 
     def forward(self, batch):
-        enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage = batch2input(batch, config.cuda)
-        dec_input, dec_mask, dec_len, dec_lens, target = batch2output(batch, config.cuda)
+        enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage = batch2input(batch, len(config.gpus) > 0)
+        dec_input, dec_mask, dec_len, dec_lens, target = batch2output(batch, len(config.gpus) > 0)
 
         enc_outputs, enc_feature, enc_sec_outputs, hidden = self.encoder(enc_input, enc_lens, enc_sec_lens, batch.sec_num, batch.sec_len)
 
         losses, preds = [], []
-        for t in range(min(dec_len, config.max_dec_len)):
+        for t in range(min(dec_len, config.max_dec_len)-1):
             inputs = dec_input[:, t]
-            target = target[:, t].unsqueeze(1)
+            step_target = target[:, t].unsqueeze(1)
             final_dist, hidden,  context, attn_dist, _coverage = self.decoder(inputs, hidden, enc_outputs, enc_feature, enc_sec_outputs, enc_mask, sec_mask, context,
                                                         zeros_oov, enc_input_oov, coverage, t)
             preds.append(final_dist[0].argmax().item())
-            target_prob = torch.gather(final_dist, 1, target).squeeze() + config.eps
+            target_prob = torch.gather(final_dist, 1, step_target).squeeze() + config.eps
             loss_t = -torch.log(target_prob)
             if config.cov:
                 step_coverage_loss = torch.sum(torch.min(attn_dist, coverage), 1)

@@ -14,7 +14,38 @@ from model import Model
 from optim import Optimizer
 from config import config
 from pre_process import DataLoader, batchify, Vocab
-from utils import get_model, calc_running_avg_loss
+from utils import get_avg_loss
+
+
+def get_model(model_file_path=None):
+    model = Model()
+    optimizer = Optimizer(config.optim, config.lr_coverage if config.cov else config.lr,
+                          acc=config.adagrad_init_acc, max_grad_norm=config.max_grad_norm)
+    optimizer.set_parameters(model.parameters())
+
+    start_iter, start_loss = 0, 0
+    if model_file_path is not None:
+        checkpoint = torch.load(model_file_path)
+        start_iter = checkpoint['iter']
+        start_loss = checkpoint['current_loss']
+
+        model_state_dict = dict([(k, v)
+                                 for k, v in checkpoint['model'].items()])
+        model.load_state_dict(model_state_dict, strict=False)
+
+        if not config.cov:
+            optimizer.optim.load_state_dict(checkpoint['optimizer'])
+            if config.use_gpu:
+                for state in optimizer.optim.state.values():
+                    for k, v in checkpoint.items():
+                        if torch.is_tensor(v):
+                            state[k] = v.cuda()
+    if len(config.gpus) > 0:
+        model = model.cuda()
+        if len(config.gpus) > 1:
+            model = nn.DataParallel(model, config.gpus)
+        optimizer.set_parameters(model.parameters())
+    return model, optimizer, start_iter, start_loss
 
 
 def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logger=None):
@@ -56,11 +87,11 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
                 model_save_path = os.path.join(model_save_dir, 'model_%d_%d' % (iter, int(time.time())))
                 torch.save(checkpoint, model_save_path)
 
-def main(model_path):
+def main():
     data = DataLoader(config)
     vocab = data.vocab
     logger = tf.summary.FileWriter(config.log_save_dir)
-    trainEpochs(config.ep, data, vocab, config.save_dir, model_path, logger)
+    trainEpochs(config.ep, data, vocab, config.save_dir, config.train_from, logger)
 
 if __name__ == '__main__':
-    main(config.train_from)
+    main()

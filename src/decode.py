@@ -52,7 +52,7 @@ class BeamSearch(object):
             if not os.path.exists(p):
                 os.mkdir(p)
 
-        self.vocab = Vocab(config.vocab_path, config.vocab_size)
+        self.vocab = Vocab(config.vocab_size, config.vocab_path)
         self.batcher = Batcher(config.decode_data_path, self.vocab, mode='decode',
                                batch_size=config.beam_size, single_pass=True)
         time.sleep(15)
@@ -74,7 +74,7 @@ class BeamSearch(object):
             # Extract the output ids from the hypothesis and convert back to words
             output_ids = [int(t) for t in best_summary.tokens[1:]]
             decoded_words = data.outputids2words(output_ids, self.vocab,
-                                                 (batch.art_oovs[0] if config.pointer_gen else None))
+                                                 (batch.art_oovs[0] if config.pointer else None))
 
             # Remove the [STOP] token from decoded_words, if necessary
             try:
@@ -117,7 +117,7 @@ class BeamSearch(object):
                       log_probs=[0.0],
                       state=(dec_h[0], dec_c[0]),
                       context = c_t_1[0],
-                      coverage=(coverage[0] if config.is_coverage else None))
+                      coverage=(coverage[0] if config.cov else None))
                  for _ in range(config.beam_size)]
         results = []
         steps = 0
@@ -144,7 +144,7 @@ class BeamSearch(object):
             c_t_1 = torch.stack(all_context, 0)
 
             coverage_t_1 = None
-            if config.is_coverage:
+            if config.cov:
                 all_coverage = []
                 for h in beams:
                     all_coverage.append(h.coverage)
@@ -167,7 +167,7 @@ class BeamSearch(object):
                 h = beams[i]
                 state_i = (dec_h[i], dec_c[i])
                 context_i = c_t_1[i]
-                coverage_i = (next_coverage[i] if config.is_coverage else None)
+                coverage_i = (next_coverage[i] if config.cov else None)
 
                 for j in range(config.beam_size * 2):  # for each of the top 2*beam_size hyps:
                     new_beam = h.extend(token=topk_ids[i, j].item(),

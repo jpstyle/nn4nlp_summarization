@@ -19,33 +19,31 @@ def batch2input(batch, use_cuda):
         sec_padding_mask.append(article.sec_mask)
 
     enc_batch = torch.LongTensor(inputs)
-    enc_padding_mask = enc_batch.ne(0).float().requires_grad_()
-    sec_padding_mask = torch.LongTensor(
-        sec_padding_mask).float().requires_grad_()
+    enc_padding_mask = enc_batch.ne(0).float()
+    sec_padding_mask = torch.LongTensor(sec_padding_mask).float()
 
     enc_lens = batch.enc_lens
     extra_zeros = None
     enc_batch_extend_vocab = None
 
     batch_size = len(batch)
-    if config.pointer_gen:
+    if config.pointer:
         enc_batch_extend_vocab = torch.LongTensor(inputs_oov)
     if batch.max_oov > 0:
-        extra_zeros = torch.zeros(
-            (batch_size, batch.max_oov), requires_grad=True)
+        extra_zeros = torch.zeros((batch_size, batch.max_oov))
 
     context = torch.zeros(
         (batch_size, 2 * config.hidden_dim), requires_grad=True)
 
     coverage = None
-    if config.is_coverage:
+    if config.cov:
         coverage = torch.zeros(enc_batch.size(), requires_grad=True)
 
     if use_cuda:
         enc_batch = enc_batch.cuda()
         enc_padding_mask = enc_padding_mask.cuda()
-        c_t_1 = c_t_1.cuda()
         sec_padding_mask = sec_padding_mask.cuda()
+        context = context.cuda()
 
         if enc_batch_extend_vocab is not None:
             enc_batch_extend_vocab = enc_batch_extend_vocab.cuda()
@@ -64,12 +62,12 @@ def batch2output(batch, use_cuda):
         targets.append(abstract.word_ids)
         targets_oov.append(abstract.word_ids_oov)
 
-    dec_input = torch.LongTensor(targets)
-    dec_mask = dec_input.ne(0).float().requires_grad_()
+    dec_input = torch.LongTensor(targets)[:,:-1]
+    dec_mask = dec_input.ne(0).float()
     dec_lens = batch.dec_lens
     dec_len = max(dec_lens)
-    dec_lens = torch.Tensor(dec_lens).float().requires_grad_()
-    target = torch.LongTensor(targets_oov)
+    dec_lens = torch.Tensor(dec_lens).float()
+    target = torch.LongTensor(targets_oov)[:,1:]
 
     if use_cuda:
         dec_input = dec_input.cuda()
@@ -112,32 +110,3 @@ def init(lstm):
         bias = getattr(lstm, b)
         bias.data.fill_(0.)
         bias.data[(bias.size(0) // 4):(bias.size(0) // 2)].fill_(1.)
-
-
-def get_model(model_file_path=None):
-    model = Model()
-    optimizer = Optimizer(config.optim, config.lr_coverage if config.is_coverage else config.lr,
-                          acc=config.adagrad_init_acc, max_grad_norm=config.max_grad_norm)
-    optimizer.set_parameters(model.parameters())
-
-    start_iter, start_loss = 0, 0
-    if model_file_path is not None:
-        checkpoint = torch.load(model_file_path)
-        start_iter = checkpoint['iter']
-        start_loss = checkpoint['current_loss']
-
-        model_state_dict = dict([(k, v)
-                                 for k, v in checkpoint['model'].items()])
-        model.load_state_dict(model_state_dict, strict=False)
-
-        if not config.is_coverage:
-            optimizer.optim.load_state_dict(checkpoint['optimizer'])
-            if config.use_gpu:
-                for state in optimizer.optim.state.values():
-                    for k, v in checkpoint.items():
-                        if torch.is_tensor(v):
-                            state[k] = v.cuda()
-    if config.use_gpu:
-        model = model.cuda()
-        optimizer.set_parameters(model.parameters())
-    return model, optimizer, start_iter, start_loss
