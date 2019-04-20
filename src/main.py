@@ -44,6 +44,8 @@ def get_model(model_file_path=None):
         model = model.cuda()
         if len(config.gpus) > 1:
             model = nn.DataParallel(model, config.gpus)
+            #model.encoder = nn.DataParallel(model.encoder, config.gpus)
+            #model.decoder = nn.DataParallel(model.decoder, config.gpus)
         optimizer.set_parameters(model.parameters())
     return model, optimizer, start_iter, start_loss
 
@@ -60,6 +62,8 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
         for batch in batches:
             optim.zero_grad()
             loss, pred = model(batch)
+            if len(config.gpus) > 1:
+                loss = loss.mean()
             loss.backward()
             optim.step()
             loss = loss.item()
@@ -70,8 +74,11 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
                 logger.flush()
                 time_took = time.time()-start
                 start = time.time()
-                print(f'epoch {ep} ({iter} steps); loss: {loss:.4f}, time: {time_took:.2f} ({time_took/config.print_interval} step/s)')
+                print(f'epoch {ep} ({iter} steps); loss: {loss:.4f}, time: {time_took:.2f} ({time_took/config.print_interval} s/step)')
                 try:
+                    if len(config.gpus) > 1:
+                        pred = pred[0]
+                    pred = [int(x) for x in list(pred.cpu().numpy())]
                     print("output: "+" ".join([vocab.get(x, batch.articles[0].oovv.get(x, " ")) for x in pred]))
                     print(f"target: {' '.join(batch.abstracts[0].words)}")
                 except:

@@ -46,6 +46,7 @@ class Encoder(nn.Module):
 
         for i in range(secL):
             packed = nn.utils.rnn.pack_padded_sequence(embedded[:,i*wordL:(i+1)*wordL,:], [wordL]*b, batch_first=True)
+            self.lstm.flatten_parameters()
             output, hidden = self.lstm(packed)
             enc_outputs, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True)
             enc_outputs = enc_outputs.contiguous()
@@ -67,7 +68,8 @@ class Encoder(nn.Module):
 
         # sec_input = enc_outputs.view(b, secL, wordL, -1)[:,:,-1,:]
         # sec_input = self.w_sec(sec_input)
-        packed_sec = nn.utils.rnn.pack_padded_sequence(sec_input, sec_lens, batch_first=True)
+        packed_sec = nn.utils.rnn.pack_padded_sequence(sec_input, [secL]*b, batch_first=True)
+        self.lstm_sec.flatten_parameters()
         output, hidden = self.lstm_sec(packed_sec)
 
         enc_sec_outputs, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True)
@@ -170,6 +172,7 @@ class Decoder(nn.Module):
 
         inp = self.embedding(inp)
         inp = self.combine_context(torch.cat((prev_context, inp), 1))
+        self.lstm.flatten_parameters()
         lstm_out, hidden = self.lstm(inp.unsqueeze(1), hidden)
 
         dec_state = torch.cat((hidden[0].view(-1, config.hidden_dim), hidden[1].view(-1, config.hidden_dim)), 1)  # B x 2*hidden_dim
@@ -210,6 +213,7 @@ class Model(nn.Module):
             self.decoder.embedding.weight = self.encoder.embedding.weight
 
     def forward(self, batch):
+        print(len(batch), len(batch.articles))
         enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage = batch2input(batch, len(config.gpus) > 0)
         dec_input, dec_mask, dec_len, dec_lens, target = batch2output(batch, len(config.gpus) > 0)
 
@@ -234,4 +238,4 @@ class Model(nn.Module):
 
         losses = torch.sum(torch.stack(losses, 1), 1)
         loss = torch.mean(losses/dec_lens)
-        return loss, preds
+        return loss, torch.tensor(preds).unsqueeze(0).to(loss.device)

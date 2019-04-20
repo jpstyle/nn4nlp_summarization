@@ -4,7 +4,7 @@ Xinru Yan
 
 Data processing for NN
 """
-from dataclasses import dataclass
+#from dataclasses import dataclass
 from itertools import islice
 from typing import Dict, NamedTuple, List, Union, Optional, TypeVar, Iterator
 
@@ -106,7 +106,7 @@ class Vocab(Labeler):
                     self.add(word)
 
 
-@dataclass
+#@dataclass
 class Sentence:
     words: List[str]
     word_ids: List[int]
