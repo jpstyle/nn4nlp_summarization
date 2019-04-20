@@ -212,12 +212,12 @@ class Model(nn.Module):
         if tie_emb:
             self.decoder.embedding.weight = self.encoder.embedding.weight
 
-    def forward(self, batch):
-        print(len(batch), len(batch.articles))
-        enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage = batch2input(batch, len(config.gpus) > 0)
-        dec_input, dec_mask, dec_len, dec_lens, target = batch2output(batch, len(config.gpus) > 0)
+    def forward(self, sec_num, sec_len, enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage, dec_input, dec_mask, dec_len, dec_lens, target):
+    # def forward(self, batch):
+        # enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage = batch2input(batch, len(config.gpus) > 0)
+        # dec_input, dec_mask, dec_len, dec_lens, target = batch2output(batch, len(config.gpus) > 0)
 
-        enc_outputs, enc_feature, enc_sec_outputs, hidden = self.encoder(enc_input, enc_lens, enc_sec_lens, batch.sec_num, batch.sec_len)
+        enc_outputs, enc_feature, enc_sec_outputs, hidden = self.encoder(enc_input, enc_lens, enc_sec_lens, sec_num, sec_len)
 
         losses, preds = [], []
         for t in range(min(dec_len, config.max_dec_len)-1):

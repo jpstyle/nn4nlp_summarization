@@ -14,7 +14,7 @@ from model import Model
 from optim import Optimizer
 from config import config
 from pre_process import DataLoader, batchify, Vocab
-from utils import get_avg_loss
+from utils import get_avg_loss, batch2input, batch2output
 
 
 def get_model(model_file_path=None):
@@ -61,7 +61,11 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
         batches = get_train_batches()
         for batch in batches:
             optim.zero_grad()
-            loss, pred = model(batch)
+            enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage = batch2input(batch, len(config.gpus) > 0)
+            dec_input, dec_mask, dec_len, dec_lens, target = batch2output(batch, len(config.gpus) > 0)
+
+            # loss, pred = model(batch)
+            loss, pred = model(batch.sec_num, batch.sec_len, enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage, dec_input, dec_mask, dec_len, dec_lens, target)
             if len(config.gpus) > 1:
                 loss = loss.mean()
             loss.backward()
