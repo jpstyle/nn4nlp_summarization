@@ -87,16 +87,16 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
                     print(f"target: {' '.join(batch.abstracts[0].words)}")
                 except:
                     pass
-            if iter % config.save_interval == 0:
-                checkpoint = {
-                    'model': model.module.state_dict() if len(config.gpus) > 1 else model.state_dict(),
-                    'config': config,
-                    'iter': iter,
-                    'optimizer': optim.optim.state_dict(),
-                    'loss': avg_loss
-                }
-                model_save_path = os.path.join(model_save_dir, 'model_%d_%d' % (iter, int(time.time())))
-                torch.save(checkpoint, model_save_path)
+
+        checkpoint = {
+            'model': model.module.state_dict() if len(config.gpus) > 1 else model.state_dict(),
+            'config': config,
+            'iter': iter,
+            'optimizer': optim.optim.state_dict(),
+            'loss': avg_loss
+        }
+        model_save_path = os.path.join(model_save_dir, 'model_%d_%d' % (iter, int(time.time())))
+        torch.save(checkpoint, model_save_path)
 
 def main():
     data = DataLoader(config)
