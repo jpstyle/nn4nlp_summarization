@@ -15,6 +15,7 @@ from optim import Optimizer
 from config import config
 from pre_process import DataLoader, batchify, Vocab
 from utils import get_avg_loss, batch2input, batch2output
+from decode import BeamSearch
 
 
 def get_model(model_file_path=None):
@@ -27,7 +28,7 @@ def get_model(model_file_path=None):
     if model_file_path is not None:
         checkpoint = torch.load(model_file_path)
         start_iter = checkpoint['iter']
-        start_loss = checkpoint['current_loss']
+        start_loss = checkpoint['loss']
 
         model_state_dict = dict([(k, v)
                                  for k, v in checkpoint['model'].items()])
@@ -35,28 +36,27 @@ def get_model(model_file_path=None):
 
         if not config.cov:
             optimizer.optim.load_state_dict(checkpoint['optimizer'])
-            if config.use_gpu:
+            if len(config.gpus) > 0:
                 for state in optimizer.optim.state.values():
                     for k, v in checkpoint.items():
                         if torch.is_tensor(v):
                             state[k] = v.cuda()
+
     if len(config.gpus) > 0:
         model = model.cuda()
         if len(config.gpus) > 1:
             model = nn.DataParallel(model, config.gpus)
         optimizer.set_parameters(model.parameters())
+
     return model, optimizer, start_iter, start_loss
 
 
 def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logger=None):
-    def get_train_batches():
-        return batchify(data.get_training_examples(), config.batch_size, vocab)
-
     model, optim, iter, avg_loss = get_model(model_file_path)
     start = time.time()
 
     for ep in range(epochs):
-        batches = get_train_batches()
+        batches = batchify(data.get_training_examples(), config.batch_size, vocab)
         for batch in batches:
             optim.zero_grad()
             enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage = batch2input(batch, len(config.gpus) > 0)
@@ -81,7 +81,7 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
                 try:
                     pred = pred[0]
                     pred = [int(x) for x in list(pred.cpu().numpy())]
-                    print("output: "+" ".join([vocab.get(x, batch.articles[0].oovv.get(x, " ")) for x in pred]))
+                    print("output: "+" ".join([vocab.get(x, batch.articles[0].oovv.get(x, "<UNK>")) for x in pred]))
                     print(f"target: {' '.join(batch.abstracts[0].words)}")
                 except:
                     pass
@@ -96,11 +96,16 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
         model_save_path = os.path.join(model_save_dir, 'model_%d_%d' % (iter, int(time.time())))
         torch.save(checkpoint, model_save_path)
 
-def main():
+
+if __name__ == '__main__':
     data = DataLoader(config)
     vocab = data.vocab
     logger = tf.summary.FileWriter(config.log_save_dir)
-    trainEpochs(config.ep, data, vocab, config.save_dir, config.train_from, logger)
 
-if __name__ == '__main__':
-    main()
+    if config.mode == "train":    
+        trainEpochs(config.ep, data, vocab, config.save_dir, config.load_from, logger)
+    elif config.mode == "decode":
+        model, _, _, _ = get_model(config.load_from)
+
+        beam_decoder = BeamSearch(model, config, data, vocab)
+        beam_decoder.decode(config)

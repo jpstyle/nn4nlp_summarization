@@ -20,7 +20,7 @@ parser.add_argument('-save_interval', type=int, action='store', default=10)
 
 
 parser.add_argument('-save_dir', type=str, action='store', default='test', help="path to save the trained model")
-parser.add_argument('-train_from', type=str, action='store', default=None, help="path to load the trained model")
+parser.add_argument('-load_from', type=str, action='store', default=None, help="path to load the trained model")
 
 parser.add_argument('-data', type=str, action='store', default='pubmed', help="choose among [arxiv, pubmed]")
 parser.add_argument('-vocab_path', type=str, action='store', default='data/pubmed/vocab')

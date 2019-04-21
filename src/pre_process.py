@@ -330,6 +330,7 @@ class DataLoader:
 
         self.vocab_file_path = config.vocab_path
         self.train_file_path = config.train_data_path
+        self.test_file_path = config.decode_data_path
         print('building vocabs from the vocab file')
         self.vocab = Vocab(cfg.vocab_size, self.vocab_file_path)
 
@@ -366,6 +367,9 @@ class DataLoader:
 
     def get_training_examples(self) -> Iterator[Example]:
         return self.load_data(self.train_file_path)
+
+    def get_test_examples(self) -> Iterator[Example]:
+        return self.load_data(self.test_file_path)
 
 def batchify(examples: Iterator[Example], batch_size: int, vocab: Vocab, repeat: bool = False) -> Iterator:
     """ batchifies the examples
