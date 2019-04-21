@@ -85,10 +85,10 @@ class Vocab(Labeler):
     PAD = '<PAD>'
     START_DECODING = '<START>'
     STOP_DECODING = '<STOP>'
-    SOS = '<S>'
+    # SOS = '<S>'
     EOS = '</S>'
 
-    SPECIAL_WORDS = [PAD, UNK, START_DECODING, STOP_DECODING, SOS, EOS]
+    SPECIAL_WORDS = [PAD, UNK, START_DECODING, STOP_DECODING, EOS]
 
     def __init__(self, vocab_size, *vocab_files):
         super().__init__()
@@ -146,6 +146,7 @@ class Section(NamedTuple):
 
 
 class Article(NamedTuple):
+    id: str
     secs: List[Section]
     sec_mask: List[int]
     oovv: Labeler
@@ -154,7 +155,7 @@ class Article(NamedTuple):
         return len(self.secs)
 
     @classmethod
-    def from_obj(cls, sects_obj: List[List[str]], sect_names: List[str], vocab: Vocab) -> 'Article':
+    def from_obj(cls, id: str, sects_obj: List[List[str]], sect_names: List[str], vocab: Vocab) -> 'Article':
         secs = []
         oovv = Labeler()
         num_sec = 0
@@ -180,7 +181,7 @@ class Article(NamedTuple):
                 sec_word_ids_oovs.extend(words_ids_oov)
             secs.append(Section(name=name, words=sec_words, word_ids=sec_word_ids, word_ids_oov=sec_word_ids_oovs))
             num_sec += 1
-        return Article(secs=secs, oovv=oovv, sec_mask=[])
+        return Article(id=id, secs=secs, oovv=oovv, sec_mask=[])
 
     @property
     def longest_word_len(self) -> int:
@@ -215,7 +216,7 @@ class Article(NamedTuple):
             name = 'PAD_SEC'
             sec = Section(name=name, words=[], word_ids=[], word_ids_oov=[])
             secs.append(sec.padded(word_length, padding_word=padding_word, padding_id=padding_id))
-        return Article(secs=secs, oovv=self.oovv, sec_mask=sec_mask)
+        return Article(id=self.id, secs=secs, oovv=self.oovv, sec_mask=sec_mask)
 
 
 class Abstract(NamedTuple):
@@ -353,9 +354,13 @@ class DataLoader:
 
     def __process_data(self, data: Iterator[Dict[List[str], List[str]]]) -> Iterator[Example]:
         for item in data:
-            article = Article.from_obj(item['sections'], item['section_names'], self.vocab)
+            if len(item['article_text'][0]) == 0 or len(item['sections'][0][0]) == 0:
+                continue
+
+            article = Article.from_obj(item['article_id'], item['sections'], item['section_names'], self.vocab)
             abstract = Abstract.from_obj(item['abstract_text'], article, self.vocab)
             example = Example(article=article, abstract=abstract)
+            
             if not (len(example.article) == 1 and example.article.longest_word_len == 0):
                 yield example
 

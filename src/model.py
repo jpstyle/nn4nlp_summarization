@@ -223,7 +223,7 @@ class Model(nn.Module):
         for t in range(min(dec_len, config.max_dec_len)-1):
             inputs = dec_input[:, t]
             step_target = target[:, t].unsqueeze(1)
-            final_dist, hidden,  context, attn_dist, _coverage = self.decoder(inputs, hidden, enc_outputs, enc_feature, enc_sec_outputs, enc_mask, sec_mask, context,
+            final_dist, hidden, context, attn_dist, _coverage = self.decoder(inputs, hidden, enc_outputs, enc_feature, enc_sec_outputs, enc_mask, sec_mask, context,
                                                         zeros_oov, enc_input_oov, coverage, t)
             preds.append(final_dist[0].argmax().item())
             target_prob = torch.gather(final_dist, 1, step_target).squeeze() + config.eps
@@ -238,4 +238,5 @@ class Model(nn.Module):
 
         losses = torch.sum(torch.stack(losses, 1), 1)
         loss = torch.mean(losses/dec_lens)
+            
         return loss, torch.tensor(preds).unsqueeze(0).to(loss.device)

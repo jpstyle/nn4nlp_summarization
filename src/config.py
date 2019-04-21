@@ -40,9 +40,9 @@ parser.add_argument('-batch_shuffle_window', type=int, action='store', default=1
 
 parser.add_argument('-optim', type=str, choices=['adagrad', 'adam', 'sgd'], action='store',default='adagrad', help='[adagrad|adam|sgd]')
 parser.add_argument('-max_grad_norm', type=float, default=2.0, help="""gradient clipping: gradient vector norm exceeds, renormalize it norm=max_grad_norm""")
-parser.add_argument('-lr', type=float, action='store', default=0.15)
-parser.add_argument('-lr_coverage', type=float, action='store', default=0.15)
-parser.add_argument('-adagrad_init_acc', type=float, action='store', default=0.1)
+parser.add_argument('-lr', type=float, action='store', default=0.015)
+parser.add_argument('-lr_coverage', type=float, action='store', default=0.015)
+parser.add_argument('-adagrad_init_acc', type=float, action='store', default=0)
 parser.add_argument('-rand_unif_init_mag', type=float, action='store', default=0.02)
 parser.add_argument('-trunc_norm_init_std', type=float, action='store', default=1e-4)
 parser.add_argument('-eps', type=float, action='store', default=1e-12)
