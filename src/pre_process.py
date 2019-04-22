@@ -355,7 +355,7 @@ class DataLoader:
 
     def __process_data(self, data: Iterator[Dict[List[str], List[str]]]) -> Iterator[Example]:
         for item in data:
-            if len(item['article_text'][0]) == 0 or len(item['sections'][0][0]) == 0:
+            if len(item['sections'][0][0]) == 0:
                 continue
 
             article = Article.from_obj(item['article_id'], item['sections'], item['section_names'], self.vocab)

@@ -16,7 +16,7 @@ parser.add_argument('-verbose', action='store_true', default=True)
 
 parser.add_argument('-log_root', type=str, action='store', default='log')
 parser.add_argument('-print_interval', type=int, action='store', default=5)
-parser.add_argument('-save_interval', type=int, action='store', default=10)
+parser.add_argument('-save_interval', type=int, action='store', default=0)
 
 
 parser.add_argument('-save_dir', type=str, action='store', default='test', help="path to save the trained model")
@@ -76,13 +76,13 @@ if config.mode == "decode":
 
 # indexing save_dirs for model and log
 now = datetime.datetime.now()
-idx = f'{config.save_dir}_{now.month}{now.day}_{now.hour}{now.minute}'
+idx = f'{now.month}{now.day}_{now.hour}{now.minute}'
 if not os.path.isdir("models"):
     os.mkdir("models")
 config.save_dir = f'models/{config.save_dir}_{idx}'
 if not os.path.isdir(config.save_dir):
     os.mkdir(config.save_dir)
-config.log_save_dir = f'{config.log_root}/{config.save_dir}_{idx}'
+config.log_save_dir = f'{config.log_root}/{config.save_dir}'
 if not os.path.isdir(config.log_root):
     os.mkdir(config.log_root)
 if not os.path.isdir(config.log_save_dir):

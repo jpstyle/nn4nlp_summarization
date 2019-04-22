@@ -60,7 +60,7 @@ class BeamSearch(object):
 
             # Extract the output ids from the hypothesis and convert back to words
             output_ids = [int(t) for t in best_summary.tokens[1:]]
-            decoded_words = [self.vocab.get(x, batch.articles[0].oovv.get(x, "<UNK>")) for x in output_ids]
+            decoded_words = [self.vocab.get(x, batch.articles[0].oovv.get(x-len(self.vocab), "<???>")) for x in output_ids]
 
             original_abstract_sents = batch.abstracts[0].words[1:] # Reference summary
 

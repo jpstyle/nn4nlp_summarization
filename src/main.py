@@ -81,10 +81,21 @@ def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logge
                 try:
                     pred = pred[0]
                     pred = [int(x) for x in list(pred.cpu().numpy())]
-                    print("output: "+" ".join([vocab.get(x, batch.articles[0].oovv.get(x, "<UNK>")) for x in pred]))
+                    print("output: "+" ".join([vocab.get(x, batch.articles[0].oovv.get(x-len(vocab), "<UNK>")) for x in pred]))
                     print(f"target: {' '.join(batch.abstracts[0].words)}")
                 except:
                     pass
+
+            if config.save_interval != 0 and iter % config.save_interval == 0:
+                checkpoint = {
+                    'model': model.module.state_dict() if len(config.gpus) > 1 else model.state_dict(),
+                    'config': config,
+                    'iter': iter,
+                    'optimizer': optim.optim.state_dict(),
+                    'loss': avg_loss
+                }
+                model_save_path = os.path.join(model_save_dir, 'model_%d_%d' % (iter, int(time.time())))
+                torch.save(checkpoint, model_save_path)
 
         checkpoint = {
             'model': model.module.state_dict() if len(config.gpus) > 1 else model.state_dict(),
