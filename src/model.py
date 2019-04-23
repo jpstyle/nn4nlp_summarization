@@ -151,7 +151,7 @@ class Decoder(nn.Module):
         self.out.bias.data.normal_(std=config.trunc_norm_init_std)
 
     def forward(self, inp, hidden, enc_outputs, enc_feature, enc_sec_output, enc_mask, sec_mask, 
-                prev_context, zeros_oov, enc_input_oov, coverage, focus):
+                prev_context, zeros_oov, enc_input_oov, coverage):
 
         inp = self.embedding(inp)
         inp = self.combine_context(torch.cat((prev_context, inp), 1))
@@ -181,7 +181,7 @@ class Decoder(nn.Module):
         else:
             final_dist = vocab_dist
 
-        return final_dist, hidden, context, attn_dist, None, coverage
+        return final_dist, hidden, context, attn_dist, coverage
 
 class Model(nn.Module):
     def __init__(self, tie_emb=True):
@@ -194,14 +194,13 @@ class Model(nn.Module):
     def forward(self, sec_num, sec_len, enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage, dec_input, dec_mask, dec_len, dec_lens, target):
         
         enc_outputs, enc_feature, enc_sec_outputs, hidden = self.encoder(enc_input, enc_lens, enc_sec_lens, sec_num, sec_len)
-        focus = {0: 1.0} if config.hard else None
 
         losses, preds = [], []
         for t in range(min(dec_len, config.max_dec_len)-1):
             inputs = dec_input[:, t]
             step_target = target[:, t].unsqueeze(1)
-            final_dist, hidden, context, attn_dist, sec_attn_dist, _coverage = self.decoder(inputs, hidden, enc_outputs, enc_feature, enc_sec_outputs, enc_mask, sec_mask, context,
-                                                        zeros_oov, enc_input_oov, coverage, focus)
+            final_dist, hidden, context, attn_dist, _coverage = self.decoder(inputs, hidden, enc_outputs, enc_feature, enc_sec_outputs, enc_mask, sec_mask, context,
+                                                        zeros_oov, enc_input_oov, coverage)
             preds.append(final_dist[0].argmax().item())
             target_prob = torch.gather(final_dist, 1, step_target).squeeze() + config.eps
             loss_t = -torch.log(target_prob)
