@@ -84,7 +84,7 @@ class BeamSearch(object):
             write_for_rouge(original_abstract_sents, decoded_words, batch.articles[0].id,
                             self._rouge_ref_dir, self._rouge_dec_dir)
             counter += 1
-            if counter % 1000 == 0:
+            if counter % 100 == 0:
                 print('%d example in %d sec'%(counter, time.time() - start))
                 start = time.time()
 

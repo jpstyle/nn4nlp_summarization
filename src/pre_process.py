@@ -4,7 +4,6 @@ Xinru Yan
 
 Data processing for NN
 """
-#from dataclasses import dataclass
 from itertools import islice
 from typing import Dict, NamedTuple, List, Union, Optional, TypeVar, Iterator
 

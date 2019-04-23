@@ -1,10 +1,5 @@
 from __future__ import unicode_literals, print_function, division
 
-# import ptvsd
-# ptvsd.enable_attach(address=('localhost', 99), redirect_output=True)
-# ptvsd.wait_for_attach()
-
-
 import os
 import time
 import torch

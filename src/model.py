@@ -57,17 +57,9 @@ class Encoder(nn.Module):
         enc_outputs = torch.cat(section_encodings, dim=1)
         sec_input = torch.stack(section_reps, dim=1)
 
-        # packed = nn.utils.rnn.pack_padded_sequence(embedded, seq_lens, batch_first=True)
-        # output, hidden = self.lstm(packed)
-
-        # enc_outputs, _ = nn.utils.rnn.pad_packed_sequence(output, batch_first=True)
-        # enc_outputs = enc_outputs.contiguous()
-
         enc_feature = enc_outputs.view(b, -1, 2*config.hidden_dim)
         enc_feature = self.w_feat(enc_feature)
 
-        # sec_input = enc_outputs.view(b, secL, wordL, -1)[:,:,-1,:]
-        # sec_input = self.w_sec(sec_input)
         packed_sec = nn.utils.rnn.pack_padded_sequence(sec_input, [secL]*b, batch_first=True)
         self.lstm_sec.flatten_parameters()
         output, hidden = self.lstm_sec(packed_sec)
@@ -83,7 +75,6 @@ class Encoder(nn.Module):
 class SectionAttention(nn.Module):
     def __init__(self):
         super(SectionAttention, self).__init__()
-        # section-level attention
         self.w_d = nn.Linear(config.hidden_dim * 2, config.hidden_dim * 2)
         self.w_feat = nn.Linear(config.hidden_dim * 2, config.hidden_dim * 2, bias=False)
         self.v = nn.Linear(config.hidden_dim * 2, 1, bias=False)
@@ -160,15 +151,7 @@ class Decoder(nn.Module):
         self.out.bias.data.normal_(std=config.trunc_norm_init_std)
 
     def forward(self, inp, hidden, enc_outputs, enc_feature, enc_sec_output, enc_mask, sec_mask, 
-                prev_context, zeros_oov, enc_input_oov, coverage, step):
-
-        # if not self.training and step == 0:
-        #     h, c = hidden
-        #     dec_state = torch.cat((h.view(-1, self.hidden_dim), c.view(-1, self.hidden_dim)), 1)  # B x 2*hidden_dim
-        #     sec_attn_dist = self.attn_sec(dec_state, enc_sec_outputs, sec_mask)
-        #     c_t, _, coverage_next = self.attn(dec_state, enc_outputs, enc_feature,
-        #                                                       enc_mask, sec_attn_dist, coverage)
-        #     coverage = coverage_next
+                prev_context, zeros_oov, enc_input_oov, coverage, focus):
 
         inp = self.embedding(inp)
         inp = self.combine_context(torch.cat((prev_context, inp), 1))
@@ -178,10 +161,6 @@ class Decoder(nn.Module):
         dec_state = torch.cat((hidden[0].view(-1, config.hidden_dim), hidden[1].view(-1, config.hidden_dim)), 1)  # B x 2*hidden_dim
         sec_attn_dist = self.attn_sec(dec_state, enc_sec_output, sec_mask)
         context, attn_dist, coverage = self.attn(dec_state, enc_outputs, enc_feature, enc_mask, sec_attn_dist, coverage)
-
-        # if self.training or step > 0:
-        # if step > 0:
-        #     coverage = coverage_next
 
         if config.pointer:
             p_gen_input = torch.cat((context, dec_state, inp), 1)
@@ -202,7 +181,7 @@ class Decoder(nn.Module):
         else:
             final_dist = vocab_dist
 
-        return final_dist, hidden, context, attn_dist, coverage
+        return final_dist, hidden, context, attn_dist, None, coverage
 
 class Model(nn.Module):
     def __init__(self, tie_emb=True):
@@ -215,13 +194,14 @@ class Model(nn.Module):
     def forward(self, sec_num, sec_len, enc_input, enc_mask, sec_mask, enc_lens, enc_sec_lens, enc_input_oov, zeros_oov, context, coverage, dec_input, dec_mask, dec_len, dec_lens, target):
         
         enc_outputs, enc_feature, enc_sec_outputs, hidden = self.encoder(enc_input, enc_lens, enc_sec_lens, sec_num, sec_len)
+        focus = {0: 1.0} if config.hard else None
 
         losses, preds = [], []
         for t in range(min(dec_len, config.max_dec_len)-1):
             inputs = dec_input[:, t]
             step_target = target[:, t].unsqueeze(1)
-            final_dist, hidden, context, attn_dist, _coverage = self.decoder(inputs, hidden, enc_outputs, enc_feature, enc_sec_outputs, enc_mask, sec_mask, context,
-                                                        zeros_oov, enc_input_oov, coverage, t)
+            final_dist, hidden, context, attn_dist, sec_attn_dist, _coverage = self.decoder(inputs, hidden, enc_outputs, enc_feature, enc_sec_outputs, enc_mask, sec_mask, context,
+                                                        zeros_oov, enc_input_oov, coverage, focus)
             preds.append(final_dist[0].argmax().item())
             target_prob = torch.gather(final_dist, 1, step_target).squeeze() + config.eps
             loss_t = -torch.log(target_prob)

@@ -1,7 +1,7 @@
 data/pubmed/*.txt
 
-logs/
-models/
+log/*
+models/*
 __pycache__/
 .idea/
 .vscode

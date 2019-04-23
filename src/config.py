@@ -27,8 +27,6 @@ parser.add_argument('-vocab_path', type=str, action='store', default='data/pubme
 parser.add_argument('-seed', type=int, action='store', default=111)
 
 parser.add_argument('-ep', type=int, action='store', default=10)
-# parser.add_argument('-start_ep', type=int, action='store', default=1)
-# parser.add_argument('-pre_ep', type=int, action='store', default=8)
 parser.add_argument('-max_iterations', type=int, action='store', default=500000)
 
 parser.add_argument('-emb_dim', type=int, action='store', default=128)
