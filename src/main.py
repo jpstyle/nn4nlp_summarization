@@ -8,13 +8,13 @@ from torch import nn
 from model import Model
 from optim import Optimizer
 from config import config
-from pre_process import DataLoader, batchify, Vocab
+from pre_process import DataLoader, batchify
 from utils import get_avg_loss, batch2input, batch2output
 from decode import BeamSearch
 
 
-def get_model(model_file_path=None):
-    model = Model()
+def get_model(vocab, model_file_path=None):
+    model = Model(vocab[vocab.EOS])
     optimizer = Optimizer(config.optim, config.lr_coverage if config.cov else config.lr,
                           acc=config.adagrad_init_acc, max_grad_norm=config.max_grad_norm)
     optimizer.set_parameters(model.parameters())
@@ -47,7 +47,7 @@ def get_model(model_file_path=None):
 
 
 def trainEpochs(epochs, data, vocab, model_save_dir, model_file_path=None, logger=None):
-    model, optim, iter, avg_loss = get_model(model_file_path)
+    model, optim, iter, avg_loss = get_model(vocab, model_file_path)
     start = time.time()
 
     for ep in range(epochs):
@@ -111,7 +111,7 @@ if __name__ == '__main__':
     if config.mode == "train":    
         trainEpochs(config.ep, data, vocab, config.save_dir, config.load_from, logger)
     elif config.mode == "decode":
-        model, _, _, _ = get_model(config.load_from)
+        model, _, _, _ = get_model(vocab, config.load_from)
 
         beam_decoder = BeamSearch(model, config, data, vocab)
         beam_decoder.decode(config)
