@@ -13,19 +13,21 @@ from utils import batch2input, batch2output
 
 
 class Beam(object):
-  def __init__(self, tokens, log_probs, state, context, coverage):
+  def __init__(self, tokens, log_probs, state, context, coverage, focus):
     self.tokens = tokens
     self.log_probs = log_probs
     self.state = state
     self.context = context
     self.coverage = coverage
+    self.focus = focus
 
-  def extend(self, token, log_prob, state, context, coverage):
+  def extend(self, token, log_prob, state, context, coverage, focus):
     return Beam(tokens = self.tokens + [token],
                       log_probs = self.log_probs + [log_prob],
                       state = state,
                       context = context,
-                      coverage = coverage)
+                      coverage = coverage,
+                      focus = focus)
 
   @property
   def latest_token(self):
@@ -103,12 +105,19 @@ class BeamSearch(object):
         dec_h = dec_h.squeeze()
         dec_c = dec_c.squeeze()
 
+        if config.hard:
+            focus = torch.zeros_like(sec_mask)
+            focus[:, 0] = 1.0
+        else:
+            focus = None
+
         # Initialize hypotheses
         beams = [Beam(tokens=[self.vocab[self.vocab.START_DECODING]],
                       log_probs=[0.0],
                       state=(dec_h[0], dec_c[0]),
-                      context = context[0],
-                      coverage=(coverage[0] if config.cov else None))
+                      context=context[0],
+                      coverage=(coverage[0] if config.cov else None),
+                      focus=focus[0])
                  for _ in range(config.beam_size)]
 
         results = []
@@ -140,8 +149,15 @@ class BeamSearch(object):
                     all_coverage.append(h.coverage)
                 coverage = torch.stack(all_coverage, 0)
 
-            final_dist, hidden, context, attn_dist, _coverage = self.model.decoder(dec_input, hidden, enc_outputs, enc_feature,
-                                                    enc_sec_outputs, enc_mask, sec_mask, context, zeros_oov, enc_input_oov, coverage, steps)
+            focus = None
+            if config.hard:
+                all_focus = []
+                for h in beams:
+                    all_focus.append(h.focus)
+                focus = torch.stack(all_focus, 0)
+
+            final_dist, hidden, context, attn_dist, _coverage, focus = self.model.decoder(dec_input, hidden, enc_outputs, enc_feature,
+                                                    enc_sec_outputs, enc_mask, sec_mask, context, zeros_oov, enc_input_oov, coverage, focus)
             log_probs = torch.log(final_dist)
             topk_log_probs, topk_ids = torch.topk(log_probs, config.beam_size * 2)
 
@@ -156,13 +172,15 @@ class BeamSearch(object):
                 hidden_i = (dec_h[i], dec_c[i])
                 context_i = context[i]
                 coverage_i = _coverage[i] if config.cov else None
+                focus_i = focus[i] if config.hard else None
 
                 for j in range(config.beam_size * 2):  # for each of the top 2*beam_size hyps:
                     new_beam = h.extend(token=topk_ids[i, j].item(),
                                    log_prob=topk_log_probs[i, j].item(),
                                    state=hidden_i,
                                    context=context_i,
-                                   coverage=coverage_i)
+                                   coverage=coverage_i,
+                                   focus=focus_i)
                     all_beams.append(new_beam)
 
             beams = []
