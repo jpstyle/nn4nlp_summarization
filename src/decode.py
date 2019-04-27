@@ -117,7 +117,7 @@ class BeamSearch(object):
                       state=(dec_h[0], dec_c[0]),
                       context=context[0],
                       coverage=(coverage[0] if config.cov else None),
-                      focus=focus[0])
+                      focus=focus[0] if config.hard else None)
                  for _ in range(config.beam_size)]
 
         results = []
