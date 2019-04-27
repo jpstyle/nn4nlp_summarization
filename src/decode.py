@@ -141,7 +141,7 @@ class BeamSearch(object):
                 coverage = torch.stack(all_coverage, 0)
 
             final_dist, hidden, context, attn_dist, _coverage = self.model.decoder(dec_input, hidden, enc_outputs, enc_feature,
-                                                    enc_sec_outputs, enc_mask, sec_mask, context, zeros_oov, enc_input_oov, coverage, steps)
+                                                    enc_sec_outputs, enc_mask, sec_mask, context, zeros_oov, enc_input_oov, coverage)
             log_probs = torch.log(final_dist)
             topk_log_probs, topk_ids = torch.topk(log_probs, config.beam_size * 2)
 
@@ -224,7 +224,7 @@ def rouge_eval(ref_dir, dec_dir):
 
 def rouge_log(results_dict, dir_to_write):
     log_str = ""
-    for x in ["1","2","l"]:
+    for x in ["1","2", "3", "l"]:
         log_str += "\nROUGE-%s:\n" % x
         for y in ["f_score", "recall", "precision"]:
             key = "rouge_%s_%s" % (x,y)
