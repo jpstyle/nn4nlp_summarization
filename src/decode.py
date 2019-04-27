@@ -242,7 +242,7 @@ def rouge_eval(ref_dir, dec_dir):
 
 def rouge_log(results_dict, dir_to_write):
     log_str = ""
-    for x in ["1","2","l"]:
+    for x in ["1","2","3","l"]:
         log_str += "\nROUGE-%s:\n" % x
         for y in ["f_score", "recall", "precision"]:
             key = "rouge_%s_%s" % (x,y)
