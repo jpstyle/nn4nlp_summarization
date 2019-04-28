@@ -4,6 +4,7 @@ import sys
 import os
 import time
 import logging
+import pickle
 
 import torch
 import pyrouge
@@ -27,7 +28,7 @@ class Beam(object):
                       state = state,
                       context = context,
                       coverage = coverage,
-                      beta = self.betas + beta)
+                      betas = self.betas + [beta])
 
   @property
   def latest_token(self):
@@ -55,10 +56,13 @@ class BeamSearch(object):
     def decode(self, config):
         start = time.time()
         counter = 0
+        pick = {}
 
         for batch in self.batcher:
             # Run beam search to get best Hypothesis
             best_summary = self.beam_search(batch, config)
+
+            pick[batch.articles[0].id] = {}
 
             # Extract the output ids from the hypothesis and convert back to words
             output_ids = [int(t) for t in best_summary.tokens[1:]]
@@ -79,6 +83,28 @@ class BeamSearch(object):
             except ValueError:
                 original_abstract_sents = original_abstract_sents
 
+
+            words_all = []
+            words = []
+            betas_all = []
+            betas = []
+            for i, w in enumerate(decoded_words):
+                if w == self.vocab.EOS:
+                    words_all.append(words)
+                    betas_all.append(betas)
+                    words = []
+                    betas = []
+                else:
+                    words.append(w)
+                    betas.append(best_summary.betas[i])
+            if len(betas) != 0:
+                words_all.append(words)
+                betas_all.append(betas)
+
+            pick[batch.articles[0].id]["words"] = words_all
+            pick[batch.articles[0].id]["betas_word"] = [[bt.tolist() for bt in bt_st] for bt_st in betas_all]
+            pick[batch.articles[0].id]["betas_sent"] = [torch.stack(bt_st).mean(dim=0).tolist() for bt_st in betas_all]
+
             # Remove EOS markers
             while self.vocab.EOS in decoded_words: decoded_words.remove(self.vocab.EOS)
             while self.vocab.EOS in original_abstract_sents: original_abstract_sents.remove(self.vocab.EOS)
@@ -89,6 +115,10 @@ class BeamSearch(object):
             if counter % 100 == 0:
                 print('%d example in %d sec'%(counter, time.time() - start))
                 start = time.time()
+
+        pick_file = open(os.path.join(self._decode_dir, "betas.pickle"), 'wb')
+        pickle.dump(pick, pick_file)
+        pick_file.close()
 
         print("Decoder has finished reading dataset for single_pass.")
         print("Now starting ROUGE eval...")
