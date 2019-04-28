@@ -13,13 +13,14 @@ from utils import batch2input, batch2output
 
 
 class Beam(object):
-  def __init__(self, tokens, log_probs, state, context, coverage, focus):
+  def __init__(self, tokens, log_probs, state, context, coverage, focus, betas):
     self.tokens = tokens
     self.log_probs = log_probs
     self.state = state
     self.context = context
     self.coverage = coverage
     self.focus = focus
+    self.betas = betas
 
   def extend(self, token, log_prob, state, context, coverage, focus):
     return Beam(tokens = self.tokens + [token],
@@ -27,7 +28,8 @@ class Beam(object):
                       state = state,
                       context = context,
                       coverage = coverage,
-                      focus = focus)
+                      focus = focus,
+                      betas = self.betas + [beta])
 
   @property
   def latest_token(self):
@@ -117,7 +119,8 @@ class BeamSearch(object):
                       state=(dec_h[0], dec_c[0]),
                       context=context[0],
                       coverage=(coverage[0] if config.cov else None),
-                      focus=focus[0] if config.hard else None)
+                      focus=focus[0] if config.hard else None,
+                      betas=[])
                  for _ in range(config.beam_size)]
 
         results = []
@@ -156,7 +159,7 @@ class BeamSearch(object):
                     all_focus.append(h.focus)
                 focus = torch.stack(all_focus, 0)
 
-            final_dist, hidden, context, attn_dist, _coverage, focus = self.model.decoder(dec_input, hidden, enc_outputs, enc_feature,
+            final_dist, hidden, context, attn_dist, _coverage, focus, beta = self.model.decoder(dec_input, hidden, enc_outputs, enc_feature,
                                                     enc_sec_outputs, enc_mask, sec_mask, context, zeros_oov, enc_input_oov, coverage, focus)
             log_probs = torch.log(final_dist)
             topk_log_probs, topk_ids = torch.topk(log_probs, config.beam_size * 2)
@@ -173,6 +176,7 @@ class BeamSearch(object):
                 context_i = context[i]
                 coverage_i = _coverage[i] if config.cov else None
                 focus_i = focus[i] if config.hard else None
+                beta_i = beta[i]
 
                 for j in range(config.beam_size * 2):  # for each of the top 2*beam_size hyps:
                     new_beam = h.extend(token=topk_ids[i, j].item(),
@@ -180,7 +184,8 @@ class BeamSearch(object):
                                    state=hidden_i,
                                    context=context_i,
                                    coverage=coverage_i,
-                                   focus=focus_i)
+                                   focus=focus_i,
+                                   beta=beta_i)
                     all_beams.append(new_beam)
 
             beams = []

@@ -264,7 +264,7 @@ class Decoder(nn.Module):
         else:
             final_dist = vocab_dist
 
-        return final_dist, hidden, context, attn_dist, coverage, focus
+        return final_dist, hidden, context, attn_dist, coverage, focus, sec_attn_dist
 
 class Model(nn.Module):
     def __init__(self, EOS, tie_emb=True):
@@ -289,7 +289,7 @@ class Model(nn.Module):
         for t in range(min(dec_len, config.max_dec_len)-1):
             inputs = dec_input[:, t]
             step_target = target[:, t].unsqueeze(1)
-            final_dist, hidden, context, attn_dist, _coverage, focus = self.decoder(inputs, hidden, enc_outputs, enc_feature, enc_sec_outputs, enc_mask, sec_mask, context,
+            final_dist, hidden, context, attn_dist, _coverage, focus, _ = self.decoder(inputs, hidden, enc_outputs, enc_feature, enc_sec_outputs, enc_mask, sec_mask, context,
                                                         zeros_oov, enc_input_oov, coverage, focus)
             preds.append(final_dist[0].argmax().item())
             target_prob = torch.gather(final_dist, 1, step_target).squeeze() + config.eps
