@@ -9,12 +9,12 @@ import time
 import torch
 # import tensorflow as tf
 from torch import nn
-from model_sec import Model
+from model_heur import Model
 from optim import Optimizer
 from config import config
 from pre_process import DataLoader, batchify, Vocab
 from utils import get_avg_loss, batch2input, batch2output
-from decode_sec import BeamSearch
+from decode_heur import BeamSearch
 
 
 def get_model(model_file_path=None):
