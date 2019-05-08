@@ -8,6 +8,8 @@ Place train.txt and test.txt in `data/pubmed` directory.
 
 For training, specify GPUs to use, training mode, number of epochs & batch size. Unless specified, checkpoints will be saved at the end of every epoch. Provide `-save_interval` to additionally save checkpoints with some iteration interval. If continuing training from saved checkpoint, specify `-load_from`. If starting training with coverage, add `-cov`.
 
+### Joint-learning model
+
 Training script example:
 
   ```
@@ -18,4 +20,11 @@ For decoding, only use one GPUs at most. Specify beam size with `-batch_size`. C
 
   ```
   $ python3 src/main.py -mode decode -gpus 0 -batch_size 8 -cov -load_from models/some_exp/some_checkpoint`
+  ```
+
+### Heuristic model
+  ```
+  $ python3 src/add_heur_marker.py DATA_PATH SAVE_PATH
+  $ python3 src/main_heur.py -mode train -gpus 0 1 2 3 4 5 6 7 -ep 3 -batch_size 64 -cov -load_from models/some_exp/some_checkpoint
+  $ python3 src/main_heur.py -mode decode -gpus 0 -batch_size 8 -cov -load_from models/some_exp/some_checkpoint
   ```
